@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Depends, status
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session as DBSession
 
 from app.core.config import get_settings
-from app.db.session import SessionLocal
+from app.db.session import get_db
 from app.services.redis_client import ping_redis
 
 router = APIRouter()
@@ -18,12 +19,11 @@ def health() -> dict:
 
 
 @router.get("/ready", status_code=status.HTTP_200_OK)
-def readiness() -> dict:
+def readiness(db: DBSession = Depends(get_db)) -> dict:
     checks: dict[str, bool | str] = {"database": False, "redis": False}
 
     try:
-        with SessionLocal() as session:
-            session.execute(text("SELECT 1"))
+        db.execute(text("SELECT 1"))
         checks["database"] = True
     except SQLAlchemyError:
         checks["database"] = False

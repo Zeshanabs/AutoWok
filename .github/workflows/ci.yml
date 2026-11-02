@@ -43,6 +43,9 @@ jobs:
       - name: Lint frontend
         working-directory: ./frontend
         run: npm run lint
+      - name: Test frontend
+        working-directory: ./frontend
+        run: npm test
       - name: Type check frontend
         working-directory: ./frontend
         run: npx tsc --noEmit
@@ -54,5 +57,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Create local environment for Compose validation
+        run: cp .env.example .env
       - name: Validate docker compose configuration
         run: docker compose config

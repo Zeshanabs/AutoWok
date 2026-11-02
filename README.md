@@ -1,6 +1,6 @@
 # Autowok
 
-Autowok is a SaaS platform for brand-aware social media research, content workflows, and publishing automation. This repository currently contains Phase 0: project setup, infrastructure foundation, and application skeletons for the backend and frontend.
+Autowok is a SaaS platform for brand-aware social media research, content workflows, and publishing automation. Phase 1 adds a tested authentication and workspace foundation to the Phase 0 project skeleton.
 
 ## Product vision
 
@@ -8,7 +8,7 @@ The long-term product aims to help teams establish a brand, research topics with
 
 ## Current phase
 
-Phase 0 is in progress and focuses on building the technical foundation without implementing authentication, product workflows, or brand-management features.
+Phase 1 implementation is in place: account registration and login, opaque cookie sessions, workspace membership and role authorization, audit logging, and the corresponding frontend. PostgreSQL deployment verification remains environment-dependent; use the migration and test commands below before deploying.
 
 ## Technology stack
 
@@ -38,9 +38,12 @@ autowok/
 │   │   ├── api/
 │   │   │   └── v1/
 │   │   │       └── routes/
+│   │   ├── models/
+│   │   ├── schemas/
 │   │   ├── core/
 │   │   ├── db/
 │   │   └── services/
+│   ├── alembic/versions/
 │   ├── tests/
 │   ├── alembic.ini
 │   ├── Dockerfile
@@ -161,7 +164,7 @@ Important rules:
 
 ## Database migration instructions
 
-The backend includes Alembic configuration for future migrations. An empty initial schema is expected while no business tables have been created.
+The Phase 1 schema is managed by Alembic. The Compose backend applies additive migrations before starting; for direct development, apply them explicitly:
 
 ```powershell
 cd backend
@@ -177,14 +180,77 @@ cd backend
 pytest
 ```
 
-## Frontend validation and build commands
+The API tests use an isolated in-memory SQLite database and a mocked Redis rate limiter. They never connect to the configured development or production database.
+
+## Frontend tests, validation, and build
 
 ```powershell
 cd frontend
 npm run lint
+npm test
 npx tsc --noEmit
 npm run build
 ```
+
+## Phase 1 authentication and workspace behavior
+
+- Passwords are validated and hashed with Argon2id.
+- Login and registration create a cryptographically random opaque session token. Only its SHA-256 hash is stored; the raw token is delivered in an HTTP-only cookie and is never returned in JSON or browser storage.
+- Cookies are `SameSite=Lax` by default, `Secure` is configurable for HTTPS, and production mode always enables `Secure`. Set `SESSION_COOKIE_SAMESITE=none` only when cross-site deployment requires it and secure cookies are enabled.
+- Unsafe API requests require an allowed `Origin` and the `X-CSRF-Protection: 1` header. The frontend client adds this header and uses credentialed requests. CORS requires explicit origins; wildcard origins are rejected.
+- Redis enforces per-account/IP and per-IP login limits plus a per-IP registration limit. Authentication endpoints fail with HTTP 503 rather than silently bypassing rate limits when Redis is unavailable.
+- Each new account receives a personal workspace and `OWNER` membership in the same database transaction. Workspace resources are returned only after backend membership checks.
+- `OWNER` and `ADMIN` can manage normal workspace settings and membership, and may assign `ADMIN` or `MEMBER`. Neither can grant `OWNER`; ownership transfer is not supported in this phase. Owners cannot be removed. Members can view workspace details and members but cannot manage them.
+- Session and workspace operations create audit records with credential-free metadata.
+
+### Phase 1 API
+
+The API is versioned under `/api/v1`:
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| POST | `/auth/register` | Register, create a personal workspace, and sign in |
+| POST | `/auth/login` | Sign in |
+| GET | `/auth/me` | Return the current user, sessions summary, memberships, and optional selected workspace (`?workspace_id=...`) |
+| POST | `/auth/logout` | Revoke the current session |
+| POST | `/auth/logout-all` | Revoke all active sessions |
+| GET | `/auth/sessions` | List the caller's active sessions |
+| DELETE | `/auth/sessions/{session_id}` | Revoke one of the caller's sessions |
+| GET, POST | `/workspaces` | List accessible workspaces or create a workspace |
+| GET, PATCH | `/workspaces/{workspace_id}` | Read or update an accessible workspace |
+| GET, POST | `/workspaces/{workspace_id}/members` | List or add registered members |
+| DELETE | `/workspaces/{workspace_id}/members/{user_id}` | Remove an authorized member |
+| PATCH | `/workspaces/{workspace_id}/members/{user_id}/role` | Change a member's role |
+
+Cookies are set by registration/login; browser mutations must include the CSRF header. In local development, the configured `CORS_ORIGINS` default is `http://localhost:3000`. Set it to the exact frontend origin(s) in deployment. `NEXT_PUBLIC_API_BASE_URL` must point to the FastAPI origin; it contains no secret.
+
+### Environment variables
+
+In addition to the Phase 0 settings, configure:
+
+- `SESSION_COOKIE_NAME`: Cookie name (`autowok_session` by default).
+- `SESSION_COOKIE_SECURE`: Explicit secure-cookie switch (production always enables it).
+- `SESSION_COOKIE_SAMESITE`: `lax`, `strict`, or `none`; `none` requires secure cookies.
+- `SESSION_TTL_DAYS`: Session lifetime from 1 to 365 days (default 30).
+- `CORS_ORIGINS`: Comma-separated explicit frontend origins; `*` is not accepted.
+- `REDIS_URL`: Required by the authentication rate-limit service.
+- `NEXT_PUBLIC_API_BASE_URL`: Browser-visible FastAPI base URL.
+- `DOCKER_DATABASE_URL` and `DOCKER_REDIS_URL`: Compose-network URLs using the `postgres` and `redis` service names. The regular `DATABASE_URL` and `REDIS_URL` remain for direct local startup using `localhost`.
+
+Set production secrets and deployment-specific values outside source control. Do not put session tokens or passwords in environment variables or frontend storage.
+
+### Security limitations
+
+Email verification delivery, password recovery, invitations, MFA, ownership transfer, workspace deletion, and refresh-token/JWT infrastructure are deliberately not implemented. Session expiration and revocation are enforced by the API on every authenticated request. Rate limiting uses the direct peer IP; deployments behind reverse proxies should configure trusted proxy handling at the infrastructure boundary rather than trusting arbitrary forwarded headers.
+
+Manual smoke test:
+
+1. Start PostgreSQL and Redis and set the root `.env` to the local values.
+2. Run `docker compose up --build`, or apply `alembic upgrade head` from `backend/` before starting FastAPI directly.
+3. Open `http://localhost:3000/register`, create an account, and confirm the dashboard shows the new personal workspace and `OWNER` role.
+4. Create another registered user, add that user to the workspace from its details page, and test the member/admin controls.
+5. In Security settings, verify session listing, single-session revoke, and log out all.
+6. Confirm unauthenticated workspace requests return 401 and an authenticated non-member receives 404 for another workspace.
 
 ## Troubleshooting
 
@@ -208,7 +274,7 @@ Do not connect or push a remote without explicit permission.
 ## Development roadmap
 
 - Phase 0: Project setup and infrastructure.
-- Phase 1: Authentication, sessions, workspaces, roles, permissions, and audit logging.
+- Phase 1: Authentication, sessions, workspaces, roles, permissions, and audit logging (implemented; verify against the deployment PostgreSQL instance).
 - Phase 2: Brand profiles and AI-provider configuration.
 - Phase 3: LinkedIn and X account connections using official OAuth APIs.
 - Phase 4: Research, source extraction, and citations.
@@ -222,17 +288,17 @@ Do not connect or push a remote without explicit permission.
 - Phase 12: Multi-agent intelligence and advanced research capabilities.
 - Phase 13: Optimization, accessibility, monitoring, backups, and advanced features.
 
-## Phase 0 exclusions
+## Later-phase exclusions
 
-The following items are intentionally excluded from this phase and will be built in later phases:
+The following items remain out of scope for Phase 1 and will be built in later phases:
 
-- Authentication
-- Workspaces and brand management
+- Brand management
 - AI generation and orchestration
 - Social account integrations
 - Publishing workflows
 - Scheduling and analytics
+- Email verification delivery, password recovery, invitations, MFA, workspace deletion, and ownership transfer
 
-## Definition of done for Phase 0
+## Preserved Phase 0 behavior
 
-This phase is complete only when the environment boots successfully, the backend and frontend start, the health and readiness endpoints respond, database and Redis dependencies are validated, and the documentation reflects the Phase 0 boundaries.
+The existing landing page and `/api/v1/health` and `/api/v1/ready` endpoints remain available. The broader Phase 0 environment smoke test should still be run in the target Docker environment.

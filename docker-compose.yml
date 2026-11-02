@@ -46,8 +46,8 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       BACKEND_HOST: ${BACKEND_HOST:-0.0.0.0}
       BACKEND_PORT: ${BACKEND_PORT:-8000}
-      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://autowok:autowok@postgres:5432/autowok}
-      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      DATABASE_URL: ${DOCKER_DATABASE_URL:-postgresql+psycopg://autowok:autowok@postgres:5432/autowok}
+      REDIS_URL: ${DOCKER_REDIS_URL:-redis://redis:6379/0}
       LOCAL_STORAGE_PATH: ${LOCAL_STORAGE_PATH:-/app/storage/local}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
     ports:
@@ -61,7 +61,7 @@ services:
       - ./backend:/app
       - ./storage:/app/storage
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()\" || exit 1"]
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health').read()\" || exit 1"]
       interval: 15s
       timeout: 10s
       retries: 10
@@ -79,15 +79,16 @@ services:
       NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000}
       PORT: ${FRONTEND_PORT:-3000}
     ports:
-      - "3000:3000"
+      - "${FRONTEND_PORT:-3000}:3000"
     depends_on:
       backend:
         condition: service_healthy
     volumes:
       - ./frontend:/app
       - /app/node_modules
+      - /app/.next
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:3000 >/dev/null 2>&1 || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/ >/dev/null 2>&1 || exit 1"]
       interval: 15s
       timeout: 10s
       retries: 10

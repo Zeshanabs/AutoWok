@@ -19,7 +19,8 @@ type ReadyResponse = {
   dependencies: DependencyState;
 };
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
 export default function Home() {
   const [health, setHealth] = useState<HealthResponse | null>(null);
@@ -60,7 +61,7 @@ export default function Home() {
     fetchStatus();
   }, []);
 
-  const dependencyCards = readiness
+  const dependencyCards: [string, boolean][] = readiness
     ? [
         ["Database", readiness.dependencies.database],
         ["Redis", readiness.dependencies.redis],
@@ -77,7 +78,7 @@ export default function Home() {
             </div>
             <div>
               <p className="text-lg font-semibold tracking-tight">Autowok</p>
-              <p className="text-xs text-slate-500">Phase 0 foundation</p>
+              <p className="text-xs text-slate-500">Accounts & workspaces</p>
             </div>
           </div>
           <nav className="hidden items-center gap-8 text-sm font-medium text-slate-600 md:flex">
@@ -85,6 +86,10 @@ export default function Home() {
             <a href="#workflow" className="transition hover:text-slate-900">Workflow</a>
             <a href="#status" className="transition hover:text-slate-900">Status</a>
           </nav>
+          <div className="flex items-center gap-3 text-sm font-semibold">
+            <a href="/login" className="text-slate-700 hover:text-indigo-700">Sign in</a>
+            <a href="/register" className="rounded-lg bg-indigo-600 px-3 py-2 text-white hover:bg-indigo-700">Create account</a>
+          </div>
         </header>
 
         <section className="grid items-center gap-10 py-20 lg:grid-cols-[1.1fr_0.9fr] lg:py-28">
