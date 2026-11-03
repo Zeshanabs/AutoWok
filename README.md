@@ -1,6 +1,6 @@
 # Autowok
 
-Autowok is a SaaS platform for brand-aware social media research, content workflows, and publishing automation. Phase 1 adds a tested authentication and workspace foundation to the Phase 0 project skeleton.
+Autowok is a SaaS platform for brand-aware social media research, content workflows, and publishing automation. Phases 1 and 2 provide tested authentication/workspaces, brand profiles, and encrypted AI provider configuration.
 
 ## Product vision
 
@@ -8,7 +8,7 @@ The long-term product aims to help teams establish a brand, research topics with
 
 ## Current phase
 
-Phase 1 implementation is in place: account registration and login, opaque cookie sessions, workspace membership and role authorization, audit logging, and the corresponding frontend. PostgreSQL deployment verification remains environment-dependent; use the migration and test commands below before deploying.
+Phase 1 authentication and workspace management are in place. Phase 2 adds workspace-scoped brand profiles, reusable brand context, and encrypted AI provider configuration with explicit connection tests. Phase 2 does not generate content or connect social accounts. PostgreSQL deployment verification remains environment-dependent; use the migration and test commands below before deploying.
 
 ## Technology stack
 
@@ -164,7 +164,7 @@ Important rules:
 
 ## Database migration instructions
 
-The Phase 1 schema is managed by Alembic. The Compose backend applies additive migrations before starting; for direct development, apply them explicitly:
+The schema is managed by Alembic. The Compose backend applies additive migrations before starting; for direct development, apply them explicitly:
 
 ```powershell
 cd backend
@@ -203,7 +203,27 @@ npm run build
 - `OWNER` and `ADMIN` can manage normal workspace settings and membership, and may assign `ADMIN` or `MEMBER`. Neither can grant `OWNER`; ownership transfer is not supported in this phase. Owners cannot be removed. Members can view workspace details and members but cannot manage them.
 - Session and workspace operations create audit records with credential-free metadata.
 
-### Phase 1 API
+## Phase 2 brand and AI provider behavior
+
+- Brands, voices, audiences, content pillars, goals, and policies are scoped to a workspace.
+- `OWNER` and `ADMIN` can manage brand profiles and AI provider configurations; workspace members can read.
+- Archived brands remain readable but are read-only and excluded from reusable brand context.
+- AI provider credentials are Fernet-encrypted at rest. The API returns only a configured flag and a fixed mask; keys are not recorded in audit data or browser storage.
+- Provider connection tests run only after an authorized user explicitly requests them. Phase 2 does not call generation APIs.
+- Custom OpenAI-compatible endpoints require an operator-controlled exact host allowlist, HTTPS, port 443, and public DNS resolution during tests. The test connection is pinned to the validated IP addresses while TLS verifies the configured hostname.
+
+Set `AI_ENCRYPTION_KEY` in the ignored root `.env` before saving provider credentials. Generate it with:
+
+```powershell
+cd backend
+.\.venv\Scripts\python.exe -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
+Keep the key backed up and stable; saved credentials cannot be decrypted without it. For rotation, deploy the new key as `AI_ENCRYPTION_KEY` and the old key as `AI_ENCRYPTION_KEY_PREVIOUS` while re-encrypting stored credentials. Never use a `NEXT_PUBLIC_` variable for encryption keys.
+
+`AI_CUSTOM_ENDPOINT_HOSTS` is a comma-separated list of exact DNS names permitted for custom endpoints. Leave it empty to disable custom endpoint configuration.
+
+### API endpoints
 
 The API is versioned under `/api/v1`:
 
@@ -221,8 +241,25 @@ The API is versioned under `/api/v1`:
 | GET, POST | `/workspaces/{workspace_id}/members` | List or add registered members |
 | DELETE | `/workspaces/{workspace_id}/members/{user_id}` | Remove an authorized member |
 | PATCH | `/workspaces/{workspace_id}/members/{user_id}/role` | Change a member's role |
+| GET, POST | `/workspaces/{workspace_id}/brands` | List or create workspace brands |
+| GET, PATCH, DELETE | `/brands/{brand_id}` | Read, update, or archive an authorized brand |
+| GET | `/brands/{brand_id}/overview` | Read the brand and all profile sections |
+| GET, PUT | `/brands/{brand_id}/voice` | Read or replace brand voice |
+| GET, POST, PATCH, DELETE | `/brands/{brand_id}/{audiences,pillars,goals,policies}[/{id}]` | Manage profile entries |
+| GET | `/brands/{brand_id}/context` | Return active, credential-free brand context |
+| GET, POST | `/workspaces/{workspace_id}/ai-providers` | List or configure workspace AI providers |
+| GET, PATCH, DELETE | `/workspaces/{workspace_id}/ai-providers/{id}` | Read, update, or remove a provider configuration |
+| POST | `/workspaces/{workspace_id}/ai-providers/{id}/test` | Explicitly test the saved provider connection |
 
 Cookies are set by registration/login; browser mutations must include the CSRF header. In local development, the configured `CORS_ORIGINS` default is `http://localhost:3000`. Set it to the exact frontend origin(s) in deployment. `NEXT_PUBLIC_API_BASE_URL` must point to the FastAPI origin; it contains no secret.
+
+### Phase 2 manual smoke test
+
+1. Add a private `AI_ENCRYPTION_KEY` to `.env` before configuring a provider; do not commit or expose this value.
+2. Apply the migration with `alembic upgrade head` or run `docker compose up --build` to let the backend apply migrations.
+3. Open `/brands`, create a brand in the selected workspace, and fill in identity, voice, audiences, pillars, goals, and policies.
+4. Open `/settings/ai`, configure a provider, and use **Test connection** only when ready to make a provider API request.
+5. Confirm an `OWNER`/`ADMIN` can manage entries while a `MEMBER` can only view them. Confirm the provider list only shows a masked key.
 
 ### Environment variables
 
@@ -275,7 +312,7 @@ Do not connect or push a remote without explicit permission.
 
 - Phase 0: Project setup and infrastructure.
 - Phase 1: Authentication, sessions, workspaces, roles, permissions, and audit logging (implemented; verify against the deployment PostgreSQL instance).
-- Phase 2: Brand profiles and AI-provider configuration.
+- Phase 2: Brand profiles and AI-provider configuration (implemented; verify migration against deployment PostgreSQL).
 - Phase 3: LinkedIn and X account connections using official OAuth APIs.
 - Phase 4: Research, source extraction, and citations.
 - Phase 5: Content drafts, versions, platform validation, and approval workflows.

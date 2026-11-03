@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     session_cookie_samesite: Literal["lax", "strict", "none"] = Field(
         default="lax", alias="SESSION_COOKIE_SAMESITE"
     )
+    ai_encryption_key: str = Field(default="", alias="AI_ENCRYPTION_KEY")
+    ai_encryption_key_previous: str = Field(default="", alias="AI_ENCRYPTION_KEY_PREVIOUS")
+    ai_custom_endpoint_hosts: str = Field(default="", alias="AI_CUSTOM_ENDPOINT_HOSTS")
 
     model_config = SettingsConfigDict(
         env_file=_ROOT_ENV_FILE,
@@ -40,6 +43,14 @@ class Settings(BaseSettings):
     @property
     def cors_origins_list(self) -> List[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+
+    @property
+    def ai_custom_endpoint_hosts_list(self) -> list[str]:
+        return [
+            host.strip().encode("idna").decode("ascii").lower().rstrip(".")
+            for host in self.ai_custom_endpoint_hosts.split(",")
+            if host.strip()
+        ]
 
     @field_validator("cors_origins")
     @classmethod
