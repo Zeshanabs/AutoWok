@@ -63,6 +63,7 @@ class ProviderName(StrEnum):
     OPENAI = "openai"
     ANTHROPIC = "anthropic"
     GEMINI = "gemini"
+    GROQ = "groq"
     OPENAI_COMPATIBLE = "openai_compatible"
 
 

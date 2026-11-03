@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 
@@ -24,13 +24,6 @@ export default function BrandOverviewPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [industry, setIndustry] = useState("");
-  const [businessType, setBusinessType] = useState("");
-  const [website, setWebsite] = useState("");
-  const [primaryColor, setPrimaryColor] = useState("");
-  const [secondaryColor, setSecondaryColor] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -39,13 +32,6 @@ export default function BrandOverviewPage() {
         `/brands/${brandId}/overview`,
       );
       setOverview(data);
-      setName(data.brand.name);
-      setDescription(data.brand.description ?? "");
-      setIndustry(data.brand.industry ?? "");
-      setBusinessType(data.brand.business_type ?? "");
-      setWebsite(data.brand.website_url ?? "");
-      setPrimaryColor(data.brand.primary_color ?? "");
-      setSecondaryColor(data.brand.secondary_color ?? "");
       setError(null);
     } catch (loadError) {
       setError(
@@ -57,35 +43,6 @@ export default function BrandOverviewPage() {
       setLoading(false);
     }
   }, [brandId]);
-
-  async function saveIdentity(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setBusy(true);
-    setError(null);
-    try {
-      await apiRequest(`/brands/${brandId}`, {
-        method: "PATCH",
-        body: JSON.stringify({
-          name,
-          description: description || null,
-          industry: industry || null,
-          business_type: businessType || null,
-          website_url: website || null,
-          primary_color: primaryColor || null,
-          secondary_color: secondaryColor || null,
-        }),
-      });
-      await load();
-    } catch (saveError) {
-      setError(
-        saveError instanceof ApiError
-          ? saveError.message
-          : "Brand identity could not be saved.",
-      );
-    } finally {
-      setBusy(false);
-    }
-  }
 
   useEffect(() => {
     const timer = window.setTimeout(() => void load(), 0);
@@ -191,81 +148,16 @@ export default function BrandOverviewPage() {
                   {overview.brand.status}
                 </span>
               </div>
+              <p className="mt-4 text-sm text-slate-600">
+                {overview.brand.description || "No brand description has been added."}
+              </p>
               {canManage && overview.brand.status === "ACTIVE" && (
-                <form onSubmit={saveIdentity} className="mt-5 grid gap-4 sm:grid-cols-2">
-                  <label className="text-sm font-medium">
-                    Brand name
-                    <input
-                      value={name}
-                      onChange={(event) => setName(event.target.value)}
-                      required
-                      minLength={2}
-                      maxLength={120}
-                      className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2.5"
-                    />
-                  </label>
-                  <label className="text-sm font-medium">
-                    Industry
-                    <input
-                      value={industry}
-                      onChange={(event) => setIndustry(event.target.value)}
-                      maxLength={120}
-                      className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2.5"
-                    />
-                  </label>
-                  <label className="text-sm font-medium">
-                    Business type
-                    <input
-                      value={businessType}
-                      onChange={(event) => setBusinessType(event.target.value)}
-                      maxLength={120}
-                      className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2.5"
-                    />
-                  </label>
-                  <label className="text-sm font-medium">
-                    Website URL
-                    <input
-                      type="url"
-                      value={website}
-                      onChange={(event) => setWebsite(event.target.value)}
-                      className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2.5"
-                    />
-                  </label>
-                  <label className="text-sm font-medium sm:col-span-2">
-                    Description
-                    <textarea
-                      value={description}
-                      onChange={(event) => setDescription(event.target.value)}
-                      maxLength={5000}
-                      rows={3}
-                      className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2.5"
-                    />
-                  </label>
-                  <label className="text-sm font-medium">
-                    Primary color
-                    <input
-                      type="color"
-                      value={primaryColor || "#4f46e5"}
-                      onChange={(event) => setPrimaryColor(event.target.value)}
-                      className="mt-1 block h-11 w-full rounded-xl border border-slate-300 p-1"
-                    />
-                  </label>
-                  <label className="text-sm font-medium">
-                    Secondary color
-                    <input
-                      type="color"
-                      value={secondaryColor || "#0f172a"}
-                      onChange={(event) => setSecondaryColor(event.target.value)}
-                      className="mt-1 block h-11 w-full rounded-xl border border-slate-300 p-1"
-                    />
-                  </label>
-                  <button
-                    disabled={busy}
-                    className="w-fit rounded-xl bg-indigo-600 px-4 py-2.5 font-semibold text-white disabled:opacity-60 sm:col-span-2"
-                  >
-                    {busy ? "Saving…" : "Save identity"}
-                  </button>
-                </form>
+                <Link
+                  href={`/brands/${brandId}/settings`}
+                  className="mt-5 inline-flex rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700"
+                >
+                  Edit brand settings
+                </Link>
               )}
             </section>
             <section className="mt-7">

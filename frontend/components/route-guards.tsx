@@ -78,6 +78,9 @@ export function AppShell({ children }: { children: ReactNode }) {
             <Link href="/settings/ai" className="hover:text-indigo-700">
               AI settings
             </Link>
+            <Link href="/settings/social-accounts" className="hover:text-indigo-700">
+              Social accounts
+            </Link>
             <Link href="/settings/security" className="hover:text-indigo-700">
               Security
             </Link>

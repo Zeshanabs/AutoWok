@@ -2,13 +2,13 @@
 
 ## Purpose and phase boundary
 
-This document describes the Phase 0 foundation, Phase 1 authentication/workspaces, and Phase 2 brand profiles and AI-provider configuration. Phase 2 does not include social accounts, research, content generation, or publishing.
+This document describes the Phase 0 foundation, Phase 1 authentication/workspaces, Phase 2 brand profiles, and Phase 3 Meta/Groq integration foundations. Phase 3 does not include research, content generation workflows, or publishing.
 
 ## Components and request flow
 
 ### Frontend
 
-The Next.js App Router application provides authentication and workspace management, `/brands`, `/brands/[brandId]` and its voice/audience/pillar/goal/policy sections, `/settings/ai`, and `/settings/security`. A client-side session provider restores the current user from FastAPI when the application loads and protects the authenticated pages. The API client sends credentialed requests and the CSRF marker on state-changing calls. It does not read or persist the HTTP-only session cookie. Provider API keys are held only in the configuration form until submission and are not persisted in browser storage.
+The Next.js App Router application provides authentication and workspace management, `/brands`, the two-step `/brands/new` wizard, `/brands/[brandId]` and its `/settings` and voice/audience/pillar/goal/policy sections, `/settings/ai`, `/settings/social-accounts`, and `/settings/security`. A client-side session provider restores the current user from FastAPI when the application loads and protects the authenticated pages. The API client sends credentialed requests and the CSRF marker on state-changing calls. It does not read or persist the HTTP-only session cookie. Provider API keys are held only in the configuration form until submission and are not persisted in browser storage.
 
 Workspace selection is a non-secret preference kept in `sessionStorage`; the API validates membership whenever a selected workspace is requested. This value is not an authorization credential.
 
@@ -30,7 +30,7 @@ PostgreSQL is the application database, managed by SQLAlchemy and Alembic. The P
 
 Database foreign keys, role checks, unique constraints, indexes, and delete behavior are defined in the migration. Account registration creates the account, default personal workspace, owner membership, session, and audit records in one transaction. Workspace creation similarly writes the workspace, owner membership, and audit record together.
 
-The Phase 2 migration adds `brands`, one-to-one `brand_voices`, `target_audiences`, `content_pillars`, `brand_goals`, `brand_policies`, and `ai_provider_configs`. Brand slugs are unique within each workspace. Provider secrets are stored only as Fernet ciphertext; the database enforces at most one default provider per workspace. Brand and provider records are workspace-scoped, and child records cascade with their brand.
+The Phase 2 migrations add `brands`, one-to-one `brand_voices`, `target_audiences`, `content_pillars`, `brand_goals`, `brand_policies`, and `ai_provider_configs`. Brand slugs are unique within each workspace. Provider secrets are stored only as Fernet ciphertext; the database enforces at most one default provider per workspace. The Phase 3 migration adds workspace-scoped Meta authorizations, one-time OAuth state, social account metadata, and encrypted social credentials. Brand and provider records are workspace-scoped, and child records cascade with their brand.
 
 ### Authentication and sessions
 
@@ -43,6 +43,8 @@ Cookie configuration uses `SESSION_COOKIE_NAME`, `SESSION_COOKIE_SECURE`, and `S
 Cookie authentication is protected against CSRF by exact origin checking plus a required non-simple custom header on every unsafe method. Browsers cannot send that header cross-origin without passing the explicit credentialed CORS policy. This is intentionally a small double-check rather than a separate CSRF-token endpoint; non-browser clients must send the configured origin and header too.
 
 Login is limited to 10 attempts per account/IP and 60 per peer IP per 15 minutes; registration is limited to 5 attempts per peer IP per hour using atomic Redis counters. The API fails closed with 503 if Redis is unavailable. Behind a reverse proxy, forwarded client addresses must be configured by trusted infrastructure; arbitrary forwarded headers are not used.
+
+Meta authorization, callback, token refresh, account discovery, connection, and verification operations also use Redis-backed per-user/IP limits and fail closed if Redis is unavailable. Limits are intentionally separate per operation so vendor calls cannot be triggered without bound by a workspace administrator.
 
 ### Workspaces and authorization
 
@@ -60,13 +62,15 @@ Only registered users can be added; invitations are not implemented. Ownership t
 
 Audit records are created for registration, login, failed login, logout, logout-all, workspace creation/update, member addition/removal, and role changes. Failed-login metadata records only a generic reason and does not include the attempted email/password. Session tokens, password hashes, and authentication payloads are never recorded. There is no user-facing audit mutation API.
 
-Phase 2 adds audit events for brand identity/profile mutations and provider configuration/default/test operations. Metadata records changed field names only; provider credentials, raw provider responses, and provider error bodies are excluded.
+Phase 2 adds audit events for brand identity/profile mutations and provider configuration/default/test operations. Phase 3 also audits Meta authorization, social account connect/update/verify/disconnect, and Groq tests. Metadata records changed field names or non-secret status values only; credentials, raw provider responses, and provider error bodies are excluded.
 
 ## Brand context and provider credentials
 
 `BrandContextService` authorizes the workspace before loading a brand and returns a versioned, credential-free object containing brand identity, voice, audiences, active content pillars/goals/policies, languages, and restrictions. It does not call an AI provider or perform generation.
 
-`AIProviderConfig` supports OpenAI, Anthropic, Gemini, and allowlisted OpenAI-compatible endpoints. The API key is encrypted with Fernet using `AI_ENCRYPTION_KEY`; an optional `AI_ENCRYPTION_KEY_PREVIOUS` supports MultiFernet decryption during key rotation. Missing or invalid keys fail closed before a credential can be stored. Responses expose only a configured flag and a fixed mask. No provider request occurs during configuration; an authorized user must explicitly invoke the connection-test endpoint.
+`AIProviderConfig` supports OpenAI, Anthropic, Gemini, Groq, and allowlisted OpenAI-compatible endpoints. Groq uses its official OpenAI-compatible endpoint at `https://api.groq.com/openai/v1`; free-tier use is subject to Groq's model-specific limits. `GROQ_API_KEY` can be server-managed or an encrypted workspace key can be configured. Model listing and connection tests make external requests only when explicitly invoked. API keys are encrypted with Fernet using `AI_ENCRYPTION_KEY`; optional previous keys support decryption during rotation.
+
+Meta OAuth stores user and Page credentials encrypted with Fernet using `TOKEN_ENCRYPTION_KEY`. OAuth state is random, stored only as an HMAC digest, bound to the initiating user/workspace, expires after ten minutes, and is consumed once. Owner/Admin authorization is checked at start and callback. Page discovery filters to `MANAGE` or `CREATE_CONTENT` tasks; Instagram discovery accepts only linked `BUSINESS` or `MEDIA_CREATOR` accounts. Meta API calls use the configured Graph version and never expose access tokens in API responses. See [credential storage](./security/token-storage.md) for rotation operations.
 
 Custom endpoints require an exact `AI_CUSTOM_ENDPOINT_HOSTS` entry, HTTPS on port 443, no URL credentials/query/fragment, and public DNS addresses during connection tests. The test transport pins the connection to those validated addresses while retaining TLS hostname verification, preventing DNS rebinding from redirecting the request. Redirects are disabled, requests have a timeout, and response bodies are not returned or logged.
 
@@ -99,6 +103,12 @@ All endpoints are under `/api/v1`.
 | GET, POST | `/workspaces/{workspace_id}/ai-providers` | Workspace member / owner or admin |
 | GET, PATCH, DELETE | `/workspaces/{workspace_id}/ai-providers/{id}` | Workspace member / owner or admin |
 | POST | `/workspaces/{workspace_id}/ai-providers/{id}/test` | Owner or admin; explicitly calls the configured provider |
+| GET | `/workspaces/{workspace_id}/ai-providers/groq/status` | Workspace member; reports configuration source only |
+| GET | `/workspaces/{workspace_id}/ai-providers/groq/models` | Owner or admin; explicitly fetches Groq models |
+| POST | `/workspaces/{workspace_id}/ai-providers/groq/test` | Owner or admin; explicitly tests Groq |
+| GET | `/oauth/meta/authorize` and `/oauth/meta/callback` | Owner or admin; starts/finishes one-time Meta OAuth |
+| GET, POST | `/workspaces/{workspace_id}/social-accounts/meta/{facebook-pages,instagram-accounts,connect}` | Owner or admin; discovery and connection |
+| GET, PATCH, POST | `/workspaces/{workspace_id}/social-accounts[/{id}]` | Read: member; updates, verification, and disconnect: owner or admin |
 
 Authentication failures use generic login responses. Inaccessible workspace details and membership lists return 404 to limit resource enumeration.
 
@@ -113,6 +123,9 @@ The root `.env.example` documents:
 - `NEXT_PUBLIC_API_BASE_URL`.
 - `AI_ENCRYPTION_KEY` and optional `AI_ENCRYPTION_KEY_PREVIOUS`; never expose these as `NEXT_PUBLIC_*`.
 - `AI_CUSTOM_ENDPOINT_HOSTS`: exact allowlisted DNS names for custom provider testing.
+- `GROQ_API_KEY`, `GROQ_API_BASE_URL`, `GROQ_DEFAULT_MODEL`, and bounded timeout/retry settings.
+- `META_APP_ID`, `META_APP_SECRET`, `META_GRAPH_API_VERSION`, `META_REDIRECT_URI`, and `META_OAUTH_STATE_SECRET`.
+- `TOKEN_ENCRYPTION_KEY` and optional `TOKEN_ENCRYPTION_KEY_PREVIOUS` for Meta credentials.
 
 Do not commit `.env` or use secrets in public frontend variables. Direct backend startup requires `alembic upgrade head`; the Docker backend applies migrations before starting. Migrations are additive and do not drop Phase 0 data. Run `alembic upgrade head` with the deployment PostgreSQL connection before rollout and verify a backup/restore procedure separately.
 
@@ -124,4 +137,4 @@ Do not commit `.env` or use secrets in public frontend variables. Direct backend
 
 ## Remaining work and trade-offs
 
-Email verification delivery, password recovery, account invitations, MFA, workspace deletion, ownership transfer, social integrations, research, content generation, and publishing are not implemented. Phase 2 has not been verified against a deployment PostgreSQL database; migration application and schema verification remain required before deployment. Session activity metadata stores a bounded user-agent string but exposes only a coarse device label. Rate-limit counters are ephemeral and Redis-backed; a Redis outage blocks authentication rather than disabling protection. Production HTTPS termination, proxy trust, monitoring, and operational key/secret rotation must be configured by the deployment environment.
+Email verification delivery, password recovery, account invitations, MFA, workspace deletion, ownership transfer, research, content generation workflows, and publishing are not implemented. Phase 3 tests use mocks; real vendor credentials, Meta App Review, and live API calls remain unverified. Apply and verify PostgreSQL migrations in the deployment environment. Session activity metadata stores a bounded user-agent string but exposes only a coarse device label. Authentication rate-limit counters are ephemeral and Redis-backed; a Redis outage blocks authentication rather than disabling protection. Production HTTPS termination, proxy trust, monitoring, backups, and operational key/secret rotation must be configured by the deployment environment.

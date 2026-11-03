@@ -5,11 +5,13 @@ from uuid import UUID
 
 from cryptography.fernet import Fernet
 import pytest
+import httpx
 
 from app.models import AIProviderConfig, AuditLog, Brand, TargetAudience
-from app.schemas.brands import TargetAudienceUpdate
+from app.schemas.brands import ProviderName, TargetAudienceUpdate
 from app.services.ai_encryption import decrypt_api_key, rotate_api_key
 from app.services.ai_providers import (
+    PROVIDER_REGISTRY,
     ProviderTestResult,
     ProviderTestStatus,
     validate_provider_endpoint,
@@ -18,6 +20,64 @@ from app.services.ai_providers import (
 
 CSRF = {"Origin": "http://localhost:3000", "X-CSRF-Protection": "1"}
 PASSWORD = "StrongPassword#1234"
+
+
+def test_groq_adapter_uses_official_endpoint_and_bearer_auth():
+    captured = {}
+
+    def handle_request(request: httpx.Request) -> httpx.Response:
+        captured["url"] = str(request.url)
+        captured["authorization"] = request.headers.get("Authorization")
+        return httpx.Response(200, json={"data": []})
+
+    result = PROVIDER_REGISTRY[ProviderName.GROQ].test_connection(
+        api_key="groq-test-key",
+        base_url=None,
+        transport=httpx.MockTransport(handle_request),
+    )
+
+    assert result.status == ProviderTestStatus.SUCCESS
+    assert captured == {
+        "url": "https://api.groq.com/openai/v1/models",
+        "authorization": "Bearer groq-test-key",
+    }
+
+
+def test_groq_provider_can_be_saved_without_custom_endpoint(
+    client, db_factory, monkeypatch
+):
+    key = Fernet.generate_key().decode("ascii")
+    from app.services import ai_encryption
+
+    monkeypatch.setattr(
+        ai_encryption,
+        "get_settings",
+        lambda: SimpleNamespace(
+            ai_encryption_key=key,
+            ai_encryption_key_previous="",
+        ),
+    )
+    register(client, "groq-owner@example.com")
+    workspace_id = create_workspace(client)
+
+    response = client.post(
+        f"/api/v1/workspaces/{workspace_id}/ai-providers",
+        json={
+            "provider_name": "groq",
+            "display_name": "Free Groq",
+            "model_name": "llama-3.3-70b-versatile",
+            "api_key": "groq-test-key",
+        },
+        headers=CSRF,
+    )
+
+    assert response.status_code == 201
+    assert response.json()["provider_name"] == "groq"
+    assert response.json()["base_url"] is None
+    with db_factory() as db:
+        provider = db.query(AIProviderConfig).one()
+        assert provider.provider_name == "groq"
+        assert decrypt_api_key(provider.encrypted_api_key) == "groq-test-key"
 
 
 def register(client, email: str) -> None:

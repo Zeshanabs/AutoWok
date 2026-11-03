@@ -9,6 +9,12 @@ from app.models.brand import (
     TargetAudience,
 )
 from app.models.session import Session
+from app.models.social_account import (
+    MetaAuthorization,
+    OAuthState,
+    SocialAccount,
+    SocialAccountCredential,
+)
 from app.models.user import User
 from app.models.workspace import Workspace, WorkspaceMembership
 
@@ -20,7 +26,11 @@ __all__ = [
     "BrandPolicy",
     "BrandVoice",
     "ContentPillar",
+    "MetaAuthorization",
+    "OAuthState",
     "Session",
+    "SocialAccount",
+    "SocialAccountCredential",
     "TargetAudience",
     "User",
     "Workspace",

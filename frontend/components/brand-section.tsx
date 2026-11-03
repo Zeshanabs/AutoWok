@@ -65,6 +65,7 @@ export function BrandSectionPage({
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [updatingActiveId, setUpdatingActiveId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -220,6 +221,41 @@ export function BrandSectionPage({
           ? removeError.message
           : "Brand information could not be removed.",
       );
+    }
+  }
+
+  async function toggleActive(record: RecordType) {
+    if (!("id" in record) || !("is_active" in record)) return;
+    const nextIsActive = !record.is_active;
+    setUpdatingActiveId(record.id);
+    setError(null);
+    setSuccess(null);
+    try {
+      const updated = await apiRequest<RecordType>(
+        `/brands/${brandId}/${section}/${record.id}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ is_active: nextIsActive }),
+        },
+      );
+      setRecords((current) =>
+        current.map((item) =>
+          "id" in item && item.id === record.id ? updated : item,
+        ),
+      );
+      setSuccess(
+        nextIsActive
+          ? "Profile information activated."
+          : "Profile information deactivated.",
+      );
+    } catch (updateError) {
+      setError(
+        updateError instanceof ApiError
+          ? updateError.message
+          : "Profile information status could not be updated.",
+      );
+    } finally {
+      setUpdatingActiveId(null);
     }
   }
 
@@ -396,6 +432,11 @@ export function BrandSectionPage({
                                 ? record.tone ?? "Brand voice"
                                 : "Brand voice"}
                       </p>
+                      {"is_active" in record && (
+                        <p className="mt-1 text-xs text-slate-500">
+                          {record.is_active ? "Active" : "Inactive"}
+                        </p>
+                      )}
                       <p className="mt-1 whitespace-pre-wrap text-sm text-slate-600">
                         {"description" in record && record.description
                           ? record.description
@@ -417,6 +458,26 @@ export function BrandSectionPage({
                           className="mt-3 text-sm font-medium text-red-700 hover:text-red-900"
                         >
                           Remove
+                        </button>
+                      )}
+                      {"is_active" in record && canManage && "id" in record && (
+                        <button
+                          disabled={updatingActiveId === record.id}
+                          onClick={() => void toggleActive(record)}
+                          aria-label={`${record.is_active ? "Deactivate" : "Activate"} ${
+                            "name" in record
+                              ? record.name
+                              : "title" in record
+                                ? record.title
+                                : "Content pillar"
+                          }`}
+                          className="mt-3 ml-4 text-sm font-medium text-indigo-700 hover:text-indigo-900 disabled:opacity-60"
+                        >
+                          {updatingActiveId === record.id
+                            ? "Updating…"
+                            : record.is_active
+                              ? "Deactivate"
+                              : "Activate"}
                         </button>
                       )}
                     </article>

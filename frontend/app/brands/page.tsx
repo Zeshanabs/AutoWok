@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 
 import { useAuth } from "@/components/auth-provider";
@@ -11,13 +11,8 @@ import type { Brand } from "@/lib/brand-types";
 export default function BrandsPage() {
   const { selectedWorkspace } = useAuth();
   const [brands, setBrands] = useState<Brand[]>([]);
-  const [name, setName] = useState("");
-  const [industry, setIndustry] = useState("");
-  const [website, setWebsite] = useState("");
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
 
   const loadBrands = useCallback(async () => {
     if (!selectedWorkspace) {
@@ -49,40 +44,6 @@ export default function BrandsPage() {
     return () => window.clearTimeout(timer);
   }, [loadBrands]);
 
-  async function createBrand(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!selectedWorkspace) return;
-    setSaving(true);
-    setError(null);
-    setSuccess(null);
-    try {
-      const brand = await apiRequest<Brand>(
-        `/workspaces/${selectedWorkspace.id}/brands`,
-        {
-          method: "POST",
-          body: JSON.stringify({
-            name,
-            industry: industry || null,
-            website_url: website || null,
-          }),
-        },
-      );
-      setName("");
-      setIndustry("");
-      setWebsite("");
-      setSuccess("Brand created. Continue setup from the overview.");
-      setBrands((current) => [brand, ...current]);
-    } catch (createError) {
-      setError(
-        createError instanceof ApiError
-          ? createError.message
-          : "Brand could not be created.",
-      );
-    } finally {
-      setSaving(false);
-    }
-  }
-
   const canManage =
     selectedWorkspace?.role === "OWNER" || selectedWorkspace?.role === "ADMIN";
 
@@ -105,11 +66,6 @@ export default function BrandsPage() {
                 {error}
               </p>
             )}
-            {success && (
-              <p role="status" className="mt-5 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800">
-                {success}
-              </p>
-            )}
             <section className="mt-7 space-y-3">
               {loading ? (
                 <p>Loading brands…</p>
@@ -128,6 +84,10 @@ export default function BrandsPage() {
                       <p className="mt-1 text-sm text-slate-500">
                         {brand.industry || "Industry not set"} · {brand.status.toLowerCase()}
                       </p>
+                      <p className="mt-1 text-sm text-slate-500">
+                        {brand.website_url || "Website not set"} · Updated{" "}
+                        {new Date(brand.updated_at).toLocaleDateString()}
+                      </p>
                     </div>
                     <Link
                       href={`/brands/${brand.id}`}
@@ -140,52 +100,12 @@ export default function BrandsPage() {
               )}
             </section>
             {canManage ? (
-              <form
-                onSubmit={createBrand}
-                className="mt-9 max-w-2xl rounded-2xl border border-slate-200 bg-white p-6"
+              <Link
+                href="/brands/new"
+                className="mt-8 inline-flex rounded-xl bg-indigo-600 px-4 py-2.5 font-semibold text-white hover:bg-indigo-700"
               >
-                <h2 className="text-lg font-semibold">Start a brand setup</h2>
-                <p className="mt-1 text-sm text-slate-600">
-                  Begin with the basics; complete voice and profile details on
-                  the brand page.
-                </p>
-                <label className="mt-4 block text-sm font-medium">
-                  Brand name
-                  <input
-                    value={name}
-                    onChange={(event) => setName(event.target.value)}
-                    required
-                    minLength={2}
-                    maxLength={120}
-                    className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2.5"
-                  />
-                </label>
-                <label className="mt-4 block text-sm font-medium">
-                  Industry
-                  <input
-                    value={industry}
-                    onChange={(event) => setIndustry(event.target.value)}
-                    maxLength={120}
-                    className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2.5"
-                  />
-                </label>
-                <label className="mt-4 block text-sm font-medium">
-                  Website URL
-                  <input
-                    type="url"
-                    value={website}
-                    onChange={(event) => setWebsite(event.target.value)}
-                    placeholder="https://example.com"
-                    className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2.5"
-                  />
-                </label>
-                <button
-                  disabled={saving}
-                  className="mt-5 rounded-xl bg-indigo-600 px-4 py-2.5 font-semibold text-white disabled:opacity-60"
-                >
-                  {saving ? "Creating…" : "Create brand"}
-                </button>
-              </form>
+                Create a brand
+              </Link>
             ) : (
               <p className="mt-6 text-sm text-slate-600">
                 You have read-only access to this workspace’s brands.

@@ -103,7 +103,7 @@ export type BrandOverview = {
 export type AIProvider = {
   id: string;
   workspace_id: string;
-  provider_name: "openai" | "anthropic" | "gemini" | "openai_compatible";
+  provider_name: "openai" | "anthropic" | "gemini" | "groq" | "openai_compatible";
   display_name: string;
   model_name: string;
   base_url: string | null;
@@ -117,4 +117,43 @@ export type AIProvider = {
   updated_at: string;
   last_tested_at: string | null;
   last_test_status: string | null;
+};
+
+export type SocialAccount = {
+  id: string;
+  workspace_id: string;
+  brand_id: string | null;
+  platform: "facebook_page" | "instagram";
+  platform_account_id: string;
+  username: string | null;
+  display_name: string;
+  profile_image_url: string | null;
+  account_type: string | null;
+  parent_account_id: string | null;
+  connection_status: "connected" | "expired" | "revoked" | "error" | "disconnected";
+  granted_scopes: string[];
+  connected_by: string;
+  connected_at: string;
+  last_verified_at: string | null;
+  last_error_code: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type MetaPageOption = {
+  platform_account_id: string;
+  display_name: string;
+  username: string | null;
+  category: string | null;
+  profile_image_url: string | null;
+  tasks: string[];
+};
+
+export type InstagramAccountOption = {
+  platform_account_id: string;
+  username: string | null;
+  account_type: string;
+  profile_image_url: string | null;
+  parent_page_id: string;
+  parent_page_name: string;
 };

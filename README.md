@@ -1,6 +1,6 @@
 # Autowok
 
-Autowok is a SaaS platform for brand-aware social media research, content workflows, and publishing automation. Phases 1 and 2 provide tested authentication/workspaces, brand profiles, and encrypted AI provider configuration.
+Autowok is a SaaS platform for brand-aware social media research, content workflows, and publishing automation. Phases 1 and 2 provide authentication/workspaces, brand profiles, and encrypted AI provider configuration. Phase 3 adds Meta OAuth foundations for Facebook Pages and linked Instagram Professional accounts, plus Groq model discovery and explicit connection tests.
 
 ## Product vision
 
@@ -8,7 +8,7 @@ The long-term product aims to help teams establish a brand, research topics with
 
 ## Current phase
 
-Phase 1 authentication and workspace management are in place. Phase 2 adds workspace-scoped brand profiles, reusable brand context, and encrypted AI provider configuration with explicit connection tests. Phase 2 does not generate content or connect social accounts. PostgreSQL deployment verification remains environment-dependent; use the migration and test commands below before deploying.
+Phase 1 authentication and workspace management are in place. Phase 2 adds workspace-scoped brand profiles and encrypted AI provider configuration. Phase 3 adds Meta OAuth and Groq provider foundations. It does not add content generation, publishing, or Phase 4 research. Vendor calls are mocked in tests; real Meta/Groq calls and Meta App Review remain unverified without provider credentials.
 
 ## Technology stack
 
@@ -210,6 +210,7 @@ npm run build
 - Archived brands remain readable but are read-only and excluded from reusable brand context.
 - AI provider credentials are Fernet-encrypted at rest. The API returns only a configured flag and a fixed mask; keys are not recorded in audit data or browser storage.
 - Provider connection tests run only after an authorized user explicitly requests them. Phase 2 does not call generation APIs.
+- Groq is available through its OpenAI-compatible API endpoint (`https://api.groq.com/openai/v1`). Groq's free tier is subject to model-specific rate limits and availability; do not upgrade or enable paid billing if you want to stay on the free tier.
 - Custom OpenAI-compatible endpoints require an operator-controlled exact host allowlist, HTTPS, port 443, and public DNS resolution during tests. The test connection is pinned to the validated IP addresses while TLS verifies the configured hostname.
 
 Set `AI_ENCRYPTION_KEY` in the ignored root `.env` before saving provider credentials. Generate it with:
@@ -250,6 +251,12 @@ The API is versioned under `/api/v1`:
 | GET, POST | `/workspaces/{workspace_id}/ai-providers` | List or configure workspace AI providers |
 | GET, PATCH, DELETE | `/workspaces/{workspace_id}/ai-providers/{id}` | Read, update, or remove a provider configuration |
 | POST | `/workspaces/{workspace_id}/ai-providers/{id}/test` | Explicitly test the saved provider connection |
+| GET | `/workspaces/{workspace_id}/ai-providers/groq/status` | Read Groq configuration status without exposing the key |
+| GET | `/workspaces/{workspace_id}/ai-providers/groq/models` | Explicitly load available Groq models |
+| POST | `/workspaces/{workspace_id}/ai-providers/groq/test` | Explicitly test the configured Groq model |
+| GET | `/oauth/meta/authorize` and `/oauth/meta/callback` | Start and complete Meta OAuth |
+| GET, POST | `/workspaces/{workspace_id}/social-accounts/meta/{facebook-pages,instagram-accounts,connect}` | Discover and connect eligible Meta accounts |
+| GET, PATCH, POST | `/workspaces/{workspace_id}/social-accounts[/{account_id}]` | List, associate, verify, and disconnect workspace accounts |
 
 Cookies are set by registration/login; browser mutations must include the CSRF header. In local development, the configured `CORS_ORIGINS` default is `http://localhost:3000`. Set it to the exact frontend origin(s) in deployment. `NEXT_PUBLIC_API_BASE_URL` must point to the FastAPI origin; it contains no secret.
 
@@ -257,9 +264,18 @@ Cookies are set by registration/login; browser mutations must include the CSRF h
 
 1. Add a private `AI_ENCRYPTION_KEY` to `.env` before configuring a provider; do not commit or expose this value.
 2. Apply the migration with `alembic upgrade head` or run `docker compose up --build` to let the backend apply migrations.
-3. Open `/brands`, create a brand in the selected workspace, and fill in identity, voice, audiences, pillars, goals, and policies.
-4. Open `/settings/ai`, configure a provider, and use **Test connection** only when ready to make a provider API request.
+3. Open `/brands`, use **Create a brand** to complete the two-step setup, then manage identity from the brand’s **Settings** page and configure voice, audiences, pillars, goals, and policies. Pillars, goals, and policies can be activated or deactivated without deleting them.
+4. To use Groq without a paid plan, create an account at [Groq Console](https://console.groq.com), create an API key at [Groq API Keys](https://console.groq.com/keys), and review your model limits. Do not upgrade or add paid billing if you want to remain on the free tier. In Autowok's `/settings/ai`, select **Groq (free tier)**, enter the exact model ID shown as available in your Groq Console, paste the key directly into the password field, and save. Use **Test connection** only when ready to make a real Groq API request; if the free-tier limit is exceeded, wait for the limit to reset.
 5. Confirm an `OWNER`/`ADMIN` can manage entries while a `MEMBER` can only view them. Confirm the provider list only shows a masked key.
+
+### Phase 3 manual smoke test
+
+1. Follow [Meta developer setup](docs/meta-developer-setup.md) and [Groq free-tier setup](docs/groq-setup.md). Real Meta credentials/app permissions and a Groq API key are optional for automated tests, but required to exercise live OAuth/model requests.
+2. Set `META_APP_ID`, `META_APP_SECRET`, the exact `META_REDIRECT_URI`, a random `META_OAUTH_STATE_SECRET`, and `TOKEN_ENCRYPTION_KEY` in the ignored `.env`. Add the frontend origin to `CORS_ORIGINS`.
+3. Configure either a workspace Groq key in `/settings/ai` or server-side `GROQ_API_KEY` and `GROQ_DEFAULT_MODEL`. Use only the Groq Console's currently available models and do not enable paid billing for free-only use.
+4. Run `docker compose up --build -d backend frontend`, then verify `docker compose ps` reports healthy services. The backend applies pending migrations at startup.
+5. As a workspace Owner/Admin, open `/settings/social-accounts`, authorize Meta, and connect only Pages with the required tasks and linked Instagram Business/Creator accounts. Use verify/disconnect controls and associate the accounts with a workspace brand if desired.
+6. In `/settings/ai`, explicitly refresh the Groq model list and test only when ready to make a real vendor request. No user-facing content generation or publishing flow is added in Phase 3.
 
 ### Environment variables
 
@@ -273,6 +289,8 @@ In addition to the Phase 0 settings, configure:
 - `REDIS_URL`: Required by the authentication rate-limit service.
 - `NEXT_PUBLIC_API_BASE_URL`: Browser-visible FastAPI base URL.
 - `DOCKER_DATABASE_URL` and `DOCKER_REDIS_URL`: Compose-network URLs using the `postgres` and `redis` service names. The regular `DATABASE_URL` and `REDIS_URL` remain for direct local startup using `localhost`.
+- Groq: `GROQ_API_KEY` (optional server-managed key), `GROQ_API_BASE_URL`, `GROQ_DEFAULT_MODEL`, and bounded timeout/retry settings.
+- Meta: `META_APP_ID`, `META_APP_SECRET`, `META_GRAPH_API_VERSION`, `META_REDIRECT_URI`, `META_OAUTH_STATE_SECRET`, `TOKEN_ENCRYPTION_KEY`, and optional `TOKEN_ENCRYPTION_KEY_PREVIOUS`.
 
 Set production secrets and deployment-specific values outside source control. Do not put session tokens or passwords in environment variables or frontend storage.
 
@@ -313,7 +331,7 @@ Do not connect or push a remote without explicit permission.
 - Phase 0: Project setup and infrastructure.
 - Phase 1: Authentication, sessions, workspaces, roles, permissions, and audit logging (implemented; verify against the deployment PostgreSQL instance).
 - Phase 2: Brand profiles and AI-provider configuration (implemented; verify migration against deployment PostgreSQL).
-- Phase 3: LinkedIn and X account connections using official OAuth APIs.
+- Phase 3: Meta OAuth for Facebook Pages and linked Instagram Professional accounts, plus Groq provider foundations (implemented; live vendor setup remains environment-dependent).
 - Phase 4: Research, source extraction, and citations.
 - Phase 5: Content drafts, versions, platform validation, and approval workflows.
 - Phase 6: AI ideation, writing, repurposing, critique, and fact-checking.
@@ -331,10 +349,19 @@ The following items remain out of scope for Phase 1 and will be built in later p
 
 - Brand management
 - AI generation and orchestration
-- Social account integrations
+- Additional social platforms beyond Meta account connections
 - Publishing workflows
 - Scheduling and analytics
 - Email verification delivery, password recovery, invitations, MFA, workspace deletion, and ownership transfer
+
+## Phase 3 setup and acceptance
+
+- [Phase 3 integration overview](docs/phase-3-integrations.md)
+- [Groq free-tier setup](docs/groq-setup.md)
+- [Meta developer setup](docs/meta-developer-setup.md)
+- [Credential storage and key rotation](docs/security/token-storage.md)
+
+Groq free-tier access and limits are controlled by Groq; do not enable paid billing if you want to remain free-only. Meta access outside test roles requires the applicable Meta review and access approval. The repository's vendor tests are mocked and do not verify real API credentials.
 
 ## Preserved Phase 0 behavior
 

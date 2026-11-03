@@ -23,6 +23,7 @@ def enforce_rate_limit(
     identity: str,
     limit: int,
     window_seconds: int,
+    category: str = "Authentication",
 ) -> None:
     address = request.client.host if request.client else "unknown"
     key_material = f"{action}:{identity.casefold()}:{address}"
@@ -33,12 +34,12 @@ def enforce_rate_limit(
     except redis.RedisError as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Authentication is temporarily unavailable.",
+            detail=f"{category} is temporarily unavailable.",
         ) from exc
 
     if count > limit:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Too many authentication attempts. Please try again later.",
+            detail=f"Too many {category.lower()} requests. Please try again later.",
             headers={"Retry-After": str(window_seconds)},
         )

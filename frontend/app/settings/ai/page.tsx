@@ -9,8 +9,17 @@ import type { AIProvider } from "@/lib/brand-types";
 
 type ProviderTest = {
   status: string;
-  message: string;
+  message?: string;
+  model?: string;
   tested_at: string;
+};
+
+type GroqStatus = {
+  enabled: boolean;
+  configured: boolean;
+  source: "workspace" | "environment" | "missing";
+  model_name: string | null;
+  api_key_configured: boolean;
 };
 
 export default function AISettingsPage() {
@@ -25,6 +34,10 @@ export default function AISettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [busyProvider, setBusyProvider] = useState<string | null>(null);
+  const [editingProviderId, setEditingProviderId] = useState<string | null>(null);
+  const [groqStatus, setGroqStatus] = useState<GroqStatus | null>(null);
+  const [groqModels, setGroqModels] = useState<string[]>([]);
+  const [loadingGroqModels, setLoadingGroqModels] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -36,11 +49,16 @@ export default function AISettingsPage() {
     }
     setLoading(true);
     try {
-      setProviders(
-        await apiRequest<AIProvider[]>(
+      const [providerData, groqData] = await Promise.all([
+        apiRequest<AIProvider[]>(
           `/workspaces/${selectedWorkspace.id}/ai-providers`,
         ),
-      );
+        apiRequest<GroqStatus>(
+          `/workspaces/${selectedWorkspace.id}/ai-providers/groq/status`,
+        ),
+      ]);
+      setProviders(providerData);
+      setGroqStatus(groqData);
       setError(null);
     } catch (loadError) {
       setError(
@@ -65,32 +83,50 @@ export default function AISettingsPage() {
     setError(null);
     setNotice(null);
     try {
-      const created = await apiRequest<AIProvider>(
-        `/workspaces/${selectedWorkspace.id}/ai-providers`,
+      const requestBody: Record<string, unknown> = {
+        display_name: displayName,
+        model_name: modelName,
+      };
+      if (apiKey || !editingProviderId) requestBody.api_key = apiKey;
+      if (providerName === "openai_compatible" || !editingProviderId) {
+        requestBody.base_url =
+          providerName === "openai_compatible" ? baseUrl || null : null;
+      }
+      if (editingProviderId) {
+        requestBody.is_default = makeDefault;
+      } else {
+        requestBody.provider_name = providerName;
+        requestBody.is_default = makeDefault;
+      }
+      const saved = await apiRequest<AIProvider>(
+        `/workspaces/${selectedWorkspace.id}/ai-providers${
+          editingProviderId ? `/${editingProviderId}` : ""
+        }`,
         {
-          method: "POST",
-          body: JSON.stringify({
-            provider_name: providerName,
-            display_name: displayName,
-            model_name: modelName,
-            api_key: apiKey,
-            base_url: providerName === "openai_compatible" ? baseUrl : null,
-            is_default: makeDefault,
-          }),
+          method: editingProviderId ? "PATCH" : "POST",
+          body: JSON.stringify(requestBody),
         },
       );
-      setProviders((current) => [
-        ...current.map((item) =>
-          created.is_default ? { ...item, is_default: false } : item,
-        ),
-        created,
-      ]);
+      setProviders((current) => {
+        const remaining = current
+          .filter((item) => item.id !== saved.id)
+          .map((item) =>
+            saved.is_default ? { ...item, is_default: false } : item,
+          );
+        return [...remaining, saved];
+      });
+      const wasEditing = editingProviderId !== null;
+      setEditingProviderId(null);
       setDisplayName("");
       setModelName("");
       setApiKey("");
       setBaseUrl("");
       setMakeDefault(false);
-      setNotice("Provider saved. The secret key is not shown again.");
+      setNotice(
+        wasEditing
+          ? "Provider settings updated. The secret key is not shown again."
+          : "Provider saved. The secret key is not shown again.",
+      );
     } catch (createError) {
       setError(
         createError instanceof ApiError
@@ -100,6 +136,28 @@ export default function AISettingsPage() {
     } finally {
       setSaving(false);
     }
+  }
+
+  function editProvider(provider: AIProvider) {
+    setEditingProviderId(provider.id);
+    setProviderName(provider.provider_name);
+    setDisplayName(provider.display_name);
+    setModelName(provider.model_name);
+    setBaseUrl(provider.base_url ?? "");
+    setApiKey("");
+    setMakeDefault(provider.is_default);
+    setError(null);
+    setNotice(null);
+  }
+
+  function cancelEdit() {
+    setEditingProviderId(null);
+    setProviderName("openai");
+    setDisplayName("");
+    setModelName("");
+    setApiKey("");
+    setBaseUrl("");
+    setMakeDefault(false);
   }
 
   async function updateProvider(
@@ -141,16 +199,80 @@ export default function AISettingsPage() {
     setNotice(null);
     try {
       const result = await apiRequest<ProviderTest>(
-        `/workspaces/${selectedWorkspace.id}/ai-providers/${provider.id}/test`,
-        { method: "POST" },
+        provider.provider_name === "groq"
+          ? `/workspaces/${selectedWorkspace.id}/ai-providers/groq/test`
+          : `/workspaces/${selectedWorkspace.id}/ai-providers/${provider.id}/test`,
+        {
+          method: "POST",
+          ...(provider.provider_name === "groq"
+            ? {
+                body: JSON.stringify({ model_name: provider.model_name }),
+              }
+            : {}),
+        },
       );
-      setNotice(`${provider.display_name}: ${result.message}`);
+      setNotice(
+        `${provider.display_name}: ${
+          result.message ??
+          (result.model
+            ? `Connection succeeded for ${result.model}.`
+            : "Connection test completed.")
+        }`,
+      );
       await loadProviders();
     } catch (testError) {
       setError(
         testError instanceof ApiError
           ? testError.message
           : "The provider connection test could not be completed.",
+      );
+    } finally {
+      setBusyProvider(null);
+    }
+  }
+
+  async function loadGroqModels() {
+    if (!selectedWorkspace) return;
+    setLoadingGroqModels(true);
+    setError(null);
+    try {
+      const result = await apiRequest<{ models: string[] }>(
+        `/workspaces/${selectedWorkspace.id}/ai-providers/groq/models`,
+      );
+      setGroqModels(result.models);
+      if (result.models.length > 0 && !result.models.includes(modelName)) {
+        setModelName(result.models[0]);
+      }
+    } catch (loadError) {
+      setError(
+        loadError instanceof ApiError
+          ? loadError.message
+          : "Groq models could not be loaded.",
+      );
+    } finally {
+      setLoadingGroqModels(false);
+    }
+  }
+
+  async function testEnvironmentGroq() {
+    if (!selectedWorkspace) return;
+    setBusyProvider("groq-environment");
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await apiRequest<{ status: string; model: string }>(
+        `/workspaces/${selectedWorkspace.id}/ai-providers/groq/test`,
+        {
+          method: "POST",
+          body: JSON.stringify({ model_name: modelName || groqStatus?.model_name }),
+        },
+      );
+      setNotice(`Groq connection succeeded for ${result.model}.`);
+    } catch (testError) {
+      setError(
+        testError instanceof ApiError
+          ? testError.message
+          : "The Groq connection test could not be completed.",
       );
     } finally {
       setBusyProvider(null);
@@ -214,6 +336,30 @@ export default function AISettingsPage() {
             {loading ? (
               <p className="mt-6">Loading providers…</p>
             ) : (
+              <>
+              {groqStatus?.source === "environment" && (
+                <article className="mt-7 rounded-2xl border border-indigo-200 bg-indigo-50 p-5">
+                  <h2 className="font-semibold">Groq · Server-managed</h2>
+                  <p className="mt-1 text-sm text-slate-700">
+                    The server has a Groq API key configured. Its value is
+                    never sent to the browser. Model:{" "}
+                    {groqStatus.model_name || "Choose a model below"}.
+                    Free-tier usage is subject to account-specific rate limits;
+                    Autowok will not switch to a paid provider.
+                  </p>
+                  {canManage && (
+                    <button
+                      disabled={busyProvider !== null}
+                      onClick={() => void testEnvironmentGroq()}
+                      className="mt-3 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
+                    >
+                      {busyProvider === "groq-environment"
+                        ? "Testing…"
+                        : "Test server Groq key"}
+                    </button>
+                  )}
+                </article>
+              )}
               <section className="mt-7 space-y-3">
                 {providers.length === 0 ? (
                   <p className="rounded-xl border border-dashed border-slate-300 p-6 text-sm text-slate-600">
@@ -243,6 +389,13 @@ export default function AISettingsPage() {
                         </div>
                         {canManage && (
                           <div className="flex flex-wrap gap-2">
+                            <button
+                              disabled={busyProvider !== null}
+                              onClick={() => editProvider(provider)}
+                              className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium hover:bg-slate-50 disabled:opacity-60"
+                            >
+                              Edit
+                            </button>
                             <button
                               disabled={busyProvider !== null}
                               onClick={() =>
@@ -289,28 +442,75 @@ export default function AISettingsPage() {
                   ))
                 )}
               </section>
+              </>
             )}
             {canManage ? (
               <form
                 onSubmit={createProvider}
+                id="provider-form"
                 className="mt-9 max-w-2xl rounded-2xl border border-slate-200 bg-white p-6"
               >
-                <h2 className="text-lg font-semibold">Add a provider</h2>
+                <h2 className="text-lg font-semibold">
+                  {editingProviderId ? "Edit provider" : "Add a provider"}
+                </h2>
                 <label className="mt-4 block text-sm font-medium">
                   Provider
                   <select
                     value={providerName}
                     onChange={(event) => setProviderName(event.target.value)}
+                    disabled={editingProviderId !== null}
                     className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5"
                   >
                     <option value="openai">OpenAI</option>
                     <option value="anthropic">Anthropic</option>
                     <option value="gemini">Google Gemini</option>
+                    <option value="groq">Groq (free tier)</option>
                     <option value="openai_compatible">OpenAI-compatible</option>
                   </select>
                 </label>
                 <TextField label="Display name" value={displayName} onChange={setDisplayName} required />
-                <TextField label="Model name" value={modelName} onChange={setModelName} required />
+                {providerName === "groq" && groqModels.length > 0 ? (
+                  <label className="mt-4 block text-sm font-medium">
+                    Groq model
+                    <select
+                      value={modelName}
+                      onChange={(event) => setModelName(event.target.value)}
+                      required
+                      className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5"
+                    >
+                      {groqModels.map((model) => (
+                        <option key={model} value={model}>{model}</option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => void loadGroqModels()}
+                      disabled={loadingGroqModels}
+                      className="mt-2 text-sm font-semibold text-indigo-700 disabled:opacity-60"
+                    >
+                      {loadingGroqModels ? "Refreshing models…" : "Refresh model list"}
+                    </button>
+                  </label>
+                ) : (
+                  <div>
+                    <TextField
+                      label="Model name"
+                      value={modelName}
+                      onChange={setModelName}
+                      required
+                    />
+                    {providerName === "groq" && (
+                      <button
+                        type="button"
+                        onClick={() => void loadGroqModels()}
+                        disabled={loadingGroqModels}
+                        className="mt-2 text-sm font-semibold text-indigo-700 disabled:opacity-60"
+                      >
+                        {loadingGroqModels ? "Loading models…" : "Load supported Groq models"}
+                      </button>
+                    )}
+                  </div>
+                )}
                 <label className="mt-4 block text-sm font-medium">
                   API key
                   <input
@@ -318,10 +518,24 @@ export default function AISettingsPage() {
                     autoComplete="new-password"
                     value={apiKey}
                     onChange={(event) => setApiKey(event.target.value)}
-                    required
+                    required={editingProviderId === null}
                     className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2.5"
                   />
+                  {editingProviderId && (
+                    <span className="mt-1 block text-xs font-normal text-slate-500">
+                      Leave blank to keep the currently encrypted key. Enter a
+                      new value to replace it.
+                    </span>
+                  )}
                 </label>
+                {providerName === "groq" && (
+                  <p className="mt-2 text-sm text-slate-600">
+                    Groq uses its OpenAI-compatible API. Free-tier usage has
+                    model-specific rate limits; check your Groq Console limits.
+                    Autowok only calls Groq when you explicitly test the
+                    connection.
+                  </p>
+                )}
                 {providerName === "openai_compatible" && (
                   <label className="mt-4 block text-sm font-medium">
                     Custom base URL
@@ -352,8 +566,21 @@ export default function AISettingsPage() {
                   disabled={saving}
                   className="mt-5 rounded-xl bg-indigo-600 px-4 py-2.5 font-semibold text-white disabled:opacity-60"
                 >
-                  {saving ? "Saving…" : "Save provider"}
+                  {saving
+                    ? "Saving…"
+                    : editingProviderId
+                      ? "Save changes"
+                      : "Save provider"}
                 </button>
+                {editingProviderId && (
+                  <button
+                    type="button"
+                    onClick={cancelEdit}
+                    className="ml-3 mt-5 rounded-xl border border-slate-300 px-4 py-2.5 font-semibold"
+                  >
+                    Cancel
+                  </button>
+                )}
               </form>
             ) : (
               <p className="mt-6 text-sm text-slate-600">

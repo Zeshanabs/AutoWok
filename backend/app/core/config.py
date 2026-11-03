@@ -32,6 +32,24 @@ class Settings(BaseSettings):
     ai_encryption_key: str = Field(default="", alias="AI_ENCRYPTION_KEY")
     ai_encryption_key_previous: str = Field(default="", alias="AI_ENCRYPTION_KEY_PREVIOUS")
     ai_custom_endpoint_hosts: str = Field(default="", alias="AI_CUSTOM_ENDPOINT_HOSTS")
+    groq_api_key: str = Field(default="", alias="GROQ_API_KEY")
+    groq_api_base_url: str = Field(
+        default="https://api.groq.com/openai/v1", alias="GROQ_API_BASE_URL"
+    )
+    groq_default_model: str = Field(default="", alias="GROQ_DEFAULT_MODEL")
+    groq_timeout_seconds: float = Field(default=60, gt=0, le=300, alias="GROQ_TIMEOUT_SECONDS")
+    groq_max_retries: int = Field(default=2, ge=0, le=5, alias="GROQ_MAX_RETRIES")
+    groq_enabled: bool = Field(default=True, alias="GROQ_ENABLED")
+    meta_app_id: str = Field(default="", alias="META_APP_ID")
+    meta_app_secret: str = Field(default="", alias="META_APP_SECRET")
+    meta_graph_api_version: str = Field(default="v26.0", alias="META_GRAPH_API_VERSION")
+    meta_redirect_uri: str = Field(default="", alias="META_REDIRECT_URI")
+    meta_oauth_state_secret: str = Field(default="", alias="META_OAUTH_STATE_SECRET")
+    meta_token_encryption_key: str = Field(default="", alias="TOKEN_ENCRYPTION_KEY")
+    meta_token_encryption_key_previous: str = Field(
+        default="", alias="TOKEN_ENCRYPTION_KEY_PREVIOUS"
+    )
+    meta_webhook_verify_token: str = Field(default="", alias="META_WEBHOOK_VERIFY_TOKEN")
 
     model_config = SettingsConfigDict(
         env_file=_ROOT_ENV_FILE,
@@ -80,6 +98,49 @@ class Settings(BaseSettings):
     @property
     def secure_cookies(self) -> bool:
         return self.session_cookie_secure or self.app_env.lower() in {"production", "prod"}
+
+    @field_validator("groq_api_base_url")
+    @classmethod
+    def validate_groq_api_base_url(cls, value: str) -> str:
+        parsed = urlsplit(value)
+        if (
+            parsed.scheme != "https"
+            or parsed.hostname != "api.groq.com"
+            or parsed.username
+            or parsed.password
+            or parsed.query
+            or parsed.fragment
+        ):
+            raise ValueError("GROQ_API_BASE_URL must use the official HTTPS Groq API host.")
+        return value.rstrip("/")
+
+    @field_validator("meta_graph_api_version")
+    @classmethod
+    def validate_meta_graph_api_version(cls, value: str) -> str:
+        import re
+
+        if not re.fullmatch(r"v\d+\.\d+", value):
+            raise ValueError("META_GRAPH_API_VERSION must look like v26.0.")
+        return value
+
+    @field_validator("meta_redirect_uri")
+    @classmethod
+    def validate_meta_redirect_uri(cls, value: str) -> str:
+        if not value:
+            return value
+        parsed = urlsplit(value)
+        if (
+            parsed.scheme not in {"https", "http"}
+            or not parsed.hostname
+            or (parsed.scheme == "http" and parsed.hostname not in {"localhost", "127.0.0.1"})
+            or parsed.username
+            or parsed.password
+            or parsed.query
+            or parsed.fragment
+        ):
+            raise ValueError("META_REDIRECT_URI must be an HTTPS URL (HTTP is allowed for localhost).")
+        parsed.port
+        return value
 
     @model_validator(mode="after")
     def validate_cookie_security(self) -> "Settings":

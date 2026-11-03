@@ -29,7 +29,7 @@ class AIProviderConfig(Base):
     __tablename__ = "ai_provider_configs"
     __table_args__ = (
         CheckConstraint(
-            "provider_name IN ('openai', 'anthropic', 'gemini', 'openai_compatible')",
+            "provider_name IN ('openai', 'anthropic', 'gemini', 'groq', 'openai_compatible')",
             name="ck_ai_provider_name",
         ),
         Index(

@@ -173,6 +173,12 @@ PROVIDER_REGISTRY: dict[ProviderName, ProviderAdapter] = {
         "x-goog-api-key",
         "",
     ),
+    ProviderName.GROQ: ProviderAdapter(
+        ProviderName.GROQ,
+        "https://api.groq.com/openai/v1",
+        "Authorization",
+        "Bearer ",
+    ),
     ProviderName.OPENAI_COMPATIBLE: ProviderAdapter(
         ProviderName.OPENAI_COMPATIBLE, "", "Authorization", "Bearer "
     ),
