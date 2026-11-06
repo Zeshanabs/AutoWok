@@ -71,6 +71,12 @@ export default function DashboardPage() {
           <Link href="/brands" className="font-semibold text-indigo-700">
             Manage brands
           </Link>
+          <Link href="/dashboard/research" className="font-semibold text-indigo-700">
+            Research workspace
+          </Link>
+          <Link href="/dashboard/content" className="font-semibold text-indigo-700">
+            Content studio
+          </Link>
           <Link href="/settings/ai" className="font-semibold text-indigo-700">
             AI provider settings
           </Link>

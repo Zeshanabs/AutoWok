@@ -16,20 +16,16 @@ class ConfiguredSearchProvider:
             raise RuntimeError(
                 "The configured research search provider is not set up. Add RESEARCH_SEARCH_PROVIDER and RESEARCH_SEARCH_API_KEY."
             )
-        if not query or not query.strip():
-            return []
-        parsed = urlsplit(self.config.base_url or "https://example.com")
+        if not self.config.base_url:
+            raise RuntimeError("The research provider base URL is missing. Set RESEARCH_SEARCH_BASE_URL.")
+        parsed = urlsplit(self.config.base_url)
         if not parsed.scheme or not parsed.netloc:
             raise RuntimeError("The research provider base URL is invalid.")
-        return [
-            SearchResult(
-                title=f"{query.strip()} results",
-                url=f"https://example.com/search?q={query.strip()}",
-                domain="example.com",
-                snippet="Provider configuration is present, but this environment is not configured for live external search.",
-                provider=self.name,
+        if self.config.name == "configured":
+            raise RuntimeError(
+                "No supported live search provider is configured. Add a real search provider and credentials before running research."
             )
-        ][:max_results]
+        return []
 
 
 SearchProviderRegistry.register(ConfiguredSearchProvider)

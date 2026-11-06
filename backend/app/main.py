@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 from app.api.v1.routes.auth import router as auth_router
 from app.api.v1.routes.ai_providers import router as ai_providers_router
 from app.api.v1.routes.brands import router as brands_router
+from app.api.v1.routes.content import router as content_router
 from app.api.v1.routes.health import router as health_router
 from app.api.v1.routes.groq_providers import router as groq_providers_router
 from app.api.v1.routes.research import router as research_router
@@ -32,7 +33,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 app = FastAPI(
     title=settings.app_name,
     version="0.1.0",
-    description="Autowok authentication, workspace, brand profile, and AI provider configuration API.",
+    description="Autowok workspace, brand, research, content, social account, and AI provider API.",
     docs_url="/docs",
     redoc_url="/redoc",
     openapi_url="/openapi.json",
@@ -54,6 +55,7 @@ app.include_router(brands_router, prefix=settings.api_v1_prefix)
 app.include_router(ai_providers_router, prefix=settings.api_v1_prefix)
 app.include_router(groq_providers_router, prefix=settings.api_v1_prefix)
 app.include_router(research_router, prefix=settings.api_v1_prefix)
+app.include_router(content_router, prefix=settings.api_v1_prefix)
 app.include_router(social_accounts_router, prefix=settings.api_v1_prefix)
 
 

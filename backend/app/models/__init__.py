@@ -8,6 +8,7 @@ from app.models.brand import (
     ContentPillar,
     TargetAudience,
 )
+from app.models.content import ContentApproval, ContentDraft, ContentProject, ContentVersion
 from app.models.research import (
     ResearchFinding,
     ResearchProject,
@@ -33,7 +34,11 @@ __all__ = [
     "BrandGoal",
     "BrandPolicy",
     "BrandVoice",
+    "ContentApproval",
+    "ContentDraft",
     "ContentPillar",
+    "ContentProject",
+    "ContentVersion",
     "MetaAuthorization",
     "OAuthState",
     "ResearchFinding",

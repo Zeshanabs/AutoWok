@@ -8,7 +8,7 @@ The long-term product aims to help teams establish a brand, research topics with
 
 ## Current phase
 
-Phase 1 authentication and workspace management are in place. Phase 2 adds workspace-scoped brand profiles and encrypted AI provider configuration. Phase 3 adds Meta OAuth and Groq provider foundations. It does not add content generation, publishing, or Phase 4 research. Vendor calls are mocked in tests; real Meta/Groq calls and Meta App Review remain unverified without provider credentials.
+Phases 1–4 provide authentication and workspaces, brand profiles and encrypted AI provider configuration, Meta/Groq integration foundations, and research reports with source citations. Phase 5 adds content projects and drafts, immutable draft versions, platform validation, and workspace approval workflows. Automated tests use mocked or local dependencies; live vendor behavior and Meta App Review remain unverified without provider credentials.
 
 ## Technology stack
 
@@ -257,8 +257,26 @@ The API is versioned under `/api/v1`:
 | GET | `/oauth/meta/authorize` and `/oauth/meta/callback` | Start and complete Meta OAuth |
 | GET, POST | `/workspaces/{workspace_id}/social-accounts/meta/{facebook-pages,instagram-accounts,connect}` | Discover and connect eligible Meta accounts |
 | GET, PATCH, POST | `/workspaces/{workspace_id}/social-accounts[/{account_id}]` | List, associate, verify, and disconnect workspace accounts |
+| GET, POST | `/content/projects` | List or create workspace content projects |
+| GET, PATCH, DELETE | `/content/projects/{project_id}` | Read, update, or delete a content project |
+| GET, POST | `/content/projects/{project_id}/drafts` | List or create a platform draft |
+| PATCH | `/content/projects/{project_id}/drafts/{draft_id}` | Save a draft revision and append a version |
+| POST | `/content/projects/{project_id}/drafts/{draft_id}/validate` | Validate platform limits and report warnings |
+| GET | `/content/projects/{project_id}/drafts/{draft_id}/versions` | Read immutable draft history |
+| POST | `/content/projects/{project_id}/drafts/{draft_id}/versions/{version_id}/restore` | Restore a past version as a new version |
+| POST | `/content/projects/{project_id}/submit-for-approval` | Submit all valid project drafts for review |
+| GET | `/content/projects/{project_id}/approvals` | Read approval history |
+| POST | `/content/projects/{project_id}/approvals/{approval_id}/decision` | Decide as an Owner/Admin |
 
 Cookies are set by registration/login; browser mutations must include the CSRF header. In local development, the configured `CORS_ORIGINS` default is `http://localhost:3000`. Set it to the exact frontend origin(s) in deployment. `NEXT_PUBLIC_API_BASE_URL` must point to the FastAPI origin; it contains no secret.
+
+### Phase 5 content workflow
+
+1. Apply the migration with `alembic upgrade head` or start the backend through Docker Compose so it applies migrations.
+2. Open `/dashboard/content`, create a project, and add at least one draft for each selected platform.
+3. Save edits to create immutable numbered versions. The version history can restore an earlier snapshot without overwriting history.
+4. Run platform validation before submitting. Instagram captions are limited to 2,200 characters and 30 hashtags; Facebook captions are limited to 63,206 characters, with a warning above 10 hashtags.
+5. Submit all project drafts for review. Workspace members can submit; only Owners and Admins can approve, reject, or request changes. Approval requests are single-use, and projects cannot be edited while a request is pending.
 
 ### Phase 2 manual smoke test
 
@@ -332,8 +350,8 @@ Do not connect or push a remote without explicit permission.
 - Phase 1: Authentication, sessions, workspaces, roles, permissions, and audit logging (implemented; verify against the deployment PostgreSQL instance).
 - Phase 2: Brand profiles and AI-provider configuration (implemented; verify migration against deployment PostgreSQL).
 - Phase 3: Meta OAuth for Facebook Pages and linked Instagram Professional accounts, plus Groq provider foundations (implemented; live vendor setup remains environment-dependent).
-- Phase 4: Research, source extraction, and citations.
-- Phase 5: Content drafts, versions, platform validation, and approval workflows.
+- Phase 4: Research, source extraction, and citations (implemented; live providers remain environment-dependent).
+- Phase 5: Content projects and drafts, version history, platform validation, and approval workflows (implemented).
 - Phase 6: AI ideation, writing, repurposing, critique, and fact-checking.
 - Phase 7: Studio, media handling, previews, and first publishing workflow.
 - Phase 8: Calendar, scheduling, retries, and queue recovery.
