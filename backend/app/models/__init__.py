@@ -8,6 +8,14 @@ from app.models.brand import (
     ContentPillar,
     TargetAudience,
 )
+from app.models.research import (
+    ResearchFinding,
+    ResearchProject,
+    ResearchQuery,
+    ResearchReport,
+    ResearchSource,
+    ResearchUsageLog,
+)
 from app.models.session import Session
 from app.models.social_account import (
     MetaAuthorization,
@@ -28,6 +36,12 @@ __all__ = [
     "ContentPillar",
     "MetaAuthorization",
     "OAuthState",
+    "ResearchFinding",
+    "ResearchProject",
+    "ResearchQuery",
+    "ResearchReport",
+    "ResearchSource",
+    "ResearchUsageLog",
     "Session",
     "SocialAccount",
     "SocialAccountCredential",

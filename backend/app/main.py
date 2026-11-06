@@ -13,6 +13,7 @@ from app.api.v1.routes.ai_providers import router as ai_providers_router
 from app.api.v1.routes.brands import router as brands_router
 from app.api.v1.routes.health import router as health_router
 from app.api.v1.routes.groq_providers import router as groq_providers_router
+from app.api.v1.routes.research import router as research_router
 from app.api.v1.routes.social_accounts import router as social_accounts_router
 from app.api.v1.routes.workspaces import router as workspaces_router
 from app.core.config import get_settings
@@ -52,6 +53,7 @@ app.include_router(workspaces_router, prefix=settings.api_v1_prefix)
 app.include_router(brands_router, prefix=settings.api_v1_prefix)
 app.include_router(ai_providers_router, prefix=settings.api_v1_prefix)
 app.include_router(groq_providers_router, prefix=settings.api_v1_prefix)
+app.include_router(research_router, prefix=settings.api_v1_prefix)
 app.include_router(social_accounts_router, prefix=settings.api_v1_prefix)
 
 
