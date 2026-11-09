@@ -25,6 +25,10 @@ The project is intentionally separated into independent layers:
 - Database: PostgreSQL with SQLAlchemy session management and Alembic migrations
 - Infrastructure: Docker Compose and persistent storage for local development
 
+## Phase 6: Advanced AI Content Intelligence
+
+This implementation adds modular AI content intelligence utilities that can be used to generate ideas, improve writing, score content, critique drafts, and validate claims against supplied research context without inventing unsupported facts. The backend reuses the existing Groq provider integration and provides API endpoints under `/api/v1/content/intelligence/*` when a workspace member has access.
+
 ## Folder structure
 
 ```text

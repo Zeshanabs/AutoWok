@@ -8,6 +8,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from app.api.v1.routes.ai_content import router as ai_content_router
 from app.api.v1.routes.auth import router as auth_router
 from app.api.v1.routes.ai_providers import router as ai_providers_router
 from app.api.v1.routes.brands import router as brands_router
@@ -56,6 +57,7 @@ app.include_router(ai_providers_router, prefix=settings.api_v1_prefix)
 app.include_router(groq_providers_router, prefix=settings.api_v1_prefix)
 app.include_router(research_router, prefix=settings.api_v1_prefix)
 app.include_router(content_router, prefix=settings.api_v1_prefix)
+app.include_router(ai_content_router, prefix=settings.api_v1_prefix)
 app.include_router(social_accounts_router, prefix=settings.api_v1_prefix)
 
 
