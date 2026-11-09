@@ -8,7 +8,8 @@ from app.models.brand import (
     ContentPillar,
     TargetAudience,
 )
-from app.models.content import ContentApproval, ContentDraft, ContentProject, ContentVersion
+from app.models.content import ContentApproval, ContentDraft, ContentProject, ContentPublication, ContentVersion
+from app.models.media_asset import MediaAsset
 from app.models.research import (
     ResearchFinding,
     ResearchProject,
@@ -38,7 +39,9 @@ __all__ = [
     "ContentDraft",
     "ContentPillar",
     "ContentProject",
+    "ContentPublication",
     "ContentVersion",
+    "MediaAsset",
     "MetaAuthorization",
     "OAuthState",
     "ResearchFinding",

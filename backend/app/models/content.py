@@ -81,6 +81,7 @@ class ContentDraft(Base):
     body: Mapped[str | None] = mapped_column(Text)
     cta: Mapped[str | None] = mapped_column(Text)
     hashtags: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    media_asset_ids: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
     status: Mapped[str] = mapped_column(String(40), default="draft", nullable=False)
     ai_generated: Mapped[bool] = mapped_column(default=False, nullable=False)
     version_count: Mapped[int] = mapped_column(default=0, nullable=False)
@@ -95,6 +96,34 @@ class ContentDraft(Base):
     )
     approvals: Mapped[list[ContentApproval]] = relationship(
         back_populates="draft", cascade="all, delete-orphan"
+    )
+
+
+class ContentPublication(Base):
+    __tablename__ = "content_publications"
+    __table_args__ = (
+        Index("ix_content_publications_project_status", "project_id", "status"),
+        Index("ix_content_publications_account", "social_account_id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    project_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("content_projects.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    draft_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("content_drafts.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    social_account_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("social_accounts.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    platform: Mapped[str] = mapped_column(String(40), nullable=False)
+    media_asset_ids: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    status: Mapped[str] = mapped_column(String(40), default="pending", nullable=False)
+    external_post_id: Mapped[str | None] = mapped_column(String(255))
+    error_message: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False
     )
 
 

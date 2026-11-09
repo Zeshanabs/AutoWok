@@ -15,6 +15,7 @@ from app.api.v1.routes.brands import router as brands_router
 from app.api.v1.routes.content import router as content_router
 from app.api.v1.routes.health import router as health_router
 from app.api.v1.routes.groq_providers import router as groq_providers_router
+from app.api.v1.routes.media_assets import router as media_assets_router
 from app.api.v1.routes.research import router as research_router
 from app.api.v1.routes.social_accounts import router as social_accounts_router
 from app.api.v1.routes.workspaces import router as workspaces_router
@@ -58,6 +59,7 @@ app.include_router(groq_providers_router, prefix=settings.api_v1_prefix)
 app.include_router(research_router, prefix=settings.api_v1_prefix)
 app.include_router(content_router, prefix=settings.api_v1_prefix)
 app.include_router(ai_content_router, prefix=settings.api_v1_prefix)
+app.include_router(media_assets_router, prefix=settings.api_v1_prefix)
 app.include_router(social_accounts_router, prefix=settings.api_v1_prefix)
 
 

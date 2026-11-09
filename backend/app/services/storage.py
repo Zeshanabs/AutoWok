@@ -15,5 +15,12 @@ class LocalStorageService:
     def resolve_path(self, relative_path: str) -> Path:
         return (self.base_path / relative_path).resolve()
 
+    def save_file(self, relative_path: str, data: bytes) -> Path:
+        path = self.resolve_path(relative_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("wb") as handle:
+            handle.write(data)
+        return path
+
 
 storage_service = LocalStorageService()
