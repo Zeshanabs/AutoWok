@@ -67,6 +67,31 @@ services:
       retries: 10
       start_period: 20s
 
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: autowok-worker
+    restart: unless-stopped
+    command: ["python", "-m", "app.worker"]
+    env_file:
+      - .env
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      DATABASE_URL: ${DOCKER_DATABASE_URL:-postgresql+psycopg://autowok:autowok@postgres:5432/autowok}
+      REDIS_URL: ${DOCKER_REDIS_URL:-redis://redis:6379/0}
+      LOCAL_STORAGE_PATH: ${LOCAL_STORAGE_PATH:-/app/storage/local}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+    depends_on:
+      backend:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+      - ./storage:/app/storage
+
   frontend:
     build:
       context: ./frontend

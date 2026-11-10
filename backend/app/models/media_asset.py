@@ -26,6 +26,8 @@ class MediaAsset(Base):
         Uuid(as_uuid=True), ForeignKey("brands.id", ondelete="SET NULL"), nullable=True, index=True
     )
     original_filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    title: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    metadata_stripped: Mapped[bool] = mapped_column(default=False, nullable=False)
     storage_key: Mapped[str] = mapped_column(String(512), nullable=False, unique=True)
     mime_type: Mapped[str] = mapped_column(String(128), nullable=False)
     file_extension: Mapped[str] = mapped_column(String(32), nullable=False)

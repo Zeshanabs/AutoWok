@@ -268,6 +268,7 @@ Rules:
                 "body": draft.body,
                 "cta": draft.cta,
                 "hashtags": list(draft.hashtags or []),
+                "media_asset_ids": list(draft.media_asset_ids or []),
                 "platform": draft.platform,
             },
             change_reason=change_reason,

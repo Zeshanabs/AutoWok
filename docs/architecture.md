@@ -110,6 +110,23 @@ All endpoints are under `/api/v1`.
 | GET, POST | `/workspaces/{workspace_id}/social-accounts/meta/{facebook-pages,instagram-accounts,connect}` | Owner or admin; discovery and connection |
 | GET, PATCH, POST | `/workspaces/{workspace_id}/social-accounts[/{id}]` | Read: member; updates, verification, and disconnect: owner or admin |
 
+Phase 7 and 8 endpoints for media, publishing, scheduling, calendar, queue, and preferences are listed in [phase-7-media-publishing.md](phase-7-media-publishing.md) and [phase-8-scheduling.md](phase-8-scheduling.md). Members can read them; only Owners and Admins can publish or schedule.
+
+## Media, publishing, and scheduling (Phases 7–8)
+
+```
+Browser ──▶ API (FastAPI) ──▶ PostgreSQL  ◀── Worker (python -m app.worker)
+              │  enqueue id      ▲   │               │ scheduler task: due scheduled_posts → content_publications
+              └──────▶ Redis ────┘   │               │ publisher: claim job → Meta Graph API → attempts
+                       (wake-up only)└── source of truth (statuses, leases, idempotency keys, guards)
+Meta ──GET signed URL──▶ /public-media/{id} (HMAC, expiring) ──▶ StorageBackend (local)
+```
+
+- `media_assets` are files in a `StorageBackend`, validated by content. The browser reads them through authenticated endpoints, and Meta reads them through signed, expiring URLs.
+- `content_publications` (jobs) and `publishing_attempts` are the only publishing records. Immediate publishing (`source=manual`) and scheduled publishing (`source=schedule`) share them.
+- `scheduled_posts` and `scheduling_history` describe *when* to publish. At the due time the scheduler creates a job in the same transaction as the claim.
+- Concurrency control comes from conditional `UPDATE`s on status, revision, and lease, unique idempotency keys, and unique `active_guard` columns. Any number of API and worker processes can run.
+
 Authentication failures use generic login responses. Inaccessible workspace details and membership lists return 404 to limit resource enumeration.
 
 ## Environment and operations
@@ -126,6 +143,8 @@ The root `.env.example` documents:
 - `GROQ_API_KEY`, `GROQ_API_BASE_URL`, `GROQ_DEFAULT_MODEL`, and bounded timeout/retry settings.
 - `META_APP_ID`, `META_APP_SECRET`, `META_GRAPH_API_VERSION`, `META_REDIRECT_URI`, and `META_OAUTH_STATE_SECRET`.
 - `TOKEN_ENCRYPTION_KEY` and optional `TOKEN_ENCRYPTION_KEY_PREVIOUS` for Meta credentials.
+- Phase 7: `STORAGE_PROVIDER`, `MEDIA_MAX_IMAGE_BYTES`, `MEDIA_MAX_VIDEO_BYTES`, `MEDIA_URL_SIGNING_SECRET`, `MEDIA_SIGNED_URL_TTL_SECONDS`, `PUBLIC_MEDIA_BASE_URL`, `PUBLISHING_MAX_ATTEMPTS`, `PUBLISHING_BACKOFF_BASE_SECONDS`, `PUBLISHING_BACKOFF_MAX_SECONDS`, `PUBLISHING_LEASE_SECONDS`, `WORKER_POLL_INTERVAL_SECONDS`.
+- Phase 8: `DEFAULT_TIMEZONE`, `SCHEDULE_MIN_LEAD_SECONDS`, `SCHEDULE_MAX_HORIZON_DAYS`, `SCHEDULE_MAX_LATENESS_SECONDS`.
 
 Do not commit `.env` or use secrets in public frontend variables. Direct backend startup requires `alembic upgrade head`; the Docker backend applies migrations before starting. Migrations are additive and do not drop Phase 0 data. Run `alembic upgrade head` with the deployment PostgreSQL connection before rollout and verify a backup/restore procedure separately.
 
@@ -137,4 +156,4 @@ Do not commit `.env` or use secrets in public frontend variables. Direct backend
 
 ## Remaining work and trade-offs
 
-Email verification delivery, password recovery, account invitations, MFA, workspace deletion, ownership transfer, research, content generation workflows, and publishing are not implemented. Phase 3 tests use mocks; real vendor credentials, Meta App Review, and live API calls remain unverified. Apply and verify PostgreSQL migrations in the deployment environment. Session activity metadata stores a bounded user-agent string but exposes only a coarse device label. Authentication rate-limit counters are ephemeral and Redis-backed; a Redis outage blocks authentication rather than disabling protection. Production HTTPS termination, proxy trust, monitoring, backups, and operational key/secret rotation must be configured by the deployment environment.
+Email verification delivery, password recovery, account invitations, MFA, workspace deletion, and ownership transfer are not implemented. Publishing (Phase 7) and scheduling (Phase 8) are implemented but only verified against a mocked Meta API. Phase 3 tests use mocks; real vendor credentials, Meta App Review, and live API calls remain unverified. Apply and verify PostgreSQL migrations in the deployment environment. Session activity metadata stores a bounded user-agent string but exposes only a coarse device label. Authentication rate-limit counters are ephemeral and Redis-backed; a Redis outage blocks authentication rather than disabling protection. Production HTTPS termination, proxy trust, monitoring, backups, and operational key/secret rotation must be configured by the deployment environment.

@@ -64,7 +64,7 @@ export default function DashboardPage() {
             )}
           </article>
         </div>
-        <div className="mt-6 flex gap-4 text-sm">
+        <div className="mt-6 flex flex-wrap gap-4 text-sm">
           <Link href="/workspaces" className="font-semibold text-indigo-700">
             Manage workspaces
           </Link>
@@ -76,6 +76,15 @@ export default function DashboardPage() {
           </Link>
           <Link href="/dashboard/content" className="font-semibold text-indigo-700">
             Content studio
+          </Link>
+          <Link href="/dashboard/calendar" className="font-semibold text-indigo-700">
+            Calendar
+          </Link>
+          <Link href="/dashboard/media" className="font-semibold text-indigo-700">
+            Media library
+          </Link>
+          <Link href="/dashboard/publishing" className="font-semibold text-indigo-700">
+            Publishing
           </Link>
           <Link href="/settings/ai" className="font-semibold text-indigo-700">
             AI provider settings

@@ -8,7 +8,7 @@ The long-term product aims to help teams establish a brand, research topics with
 
 ## Current phase
 
-Phases 1–4 provide authentication and workspaces, brand profiles and encrypted AI provider configuration, Meta/Groq integration foundations, and research reports with source citations. Phase 5 adds content projects and drafts, immutable draft versions, platform validation, and workspace approval workflows. Automated tests use mocked or local dependencies; live vendor behavior and Meta App Review remain unverified without provider credentials.
+Phases 1–6 provide authentication and workspaces, brand profiles and AI configuration, Meta/Groq integration foundations, research with citations, content projects with versioning and approvals, and Groq-based content intelligence. **Phase 7** adds the media library, platform previews, and controlled immediate publishing to Facebook Pages and Instagram Professional accounts. **Phase 8** adds the content calendar, timezone-aware scheduling, and the automated publishing queue. Automated tests use mocked or local dependencies. Live Meta publishing, Meta App Review, and PostgreSQL/Docker runs of Phases 7–8 remain **unverified** in this environment.
 
 ## Technology stack
 
@@ -28,6 +28,22 @@ The project is intentionally separated into independent layers:
 ## Phase 6: Advanced AI Content Intelligence
 
 This implementation adds modular AI content intelligence utilities that can be used to generate ideas, improve writing, score content, critique drafts, and validate claims against supplied research context without inventing unsupported facts. The backend reuses the existing Groq provider integration and provides API endpoints under `/api/v1/content/intelligence/*` when a workspace member has access.
+
+## Phase 7: Media library, previews, and controlled publishing
+
+- **Media Library** (`/dashboard/media`, `/dashboard/media/[assetId]`): image and video uploads with progress, file-type detection from content, size limits, EXIF stripping, thumbnails, SHA-256 duplicate detection, search and filters, metadata editing, and archiving.
+- **Draft media**: attach, reorder, and remove media in the content editor. Any media change creates a new version and requires re-approval.
+- **Previews**: approximate Facebook Page and Instagram renderings, with platform validation (Instagram accepts JPEG only, 2–20 item carousels, Reels; Facebook supports text, photo, multi-photo, and video).
+- **Immediate publishing**: Owners and Admins publish approved drafts to an eligible connected account after an explicit confirmation. A background worker (`python -m app.worker`) publishes through the Meta Graph API with idempotency keys, a database-level duplicate guard, atomic job claiming, attempt history, and safe retries. Results are shown in `/dashboard/publishing`.
+- Live Meta publishing is **NOT VERIFIED**: it was tested only against a mocked Graph API. See [docs/phase-7-media-publishing.md](docs/phase-7-media-publishing.md) for storage, signed URLs, the Meta permissions and App Review requirements, retry rules, and limitations.
+
+## Phase 8: Calendar, scheduling, and publishing queue
+
+- **Calendar** (`/dashboard/calendar`): month, week, day, and list views in the user's timezone, with filters for brand, platform, account, and status, clear status colours, and a list of approved content that is ready to schedule.
+- **Scheduling** (`/dashboard/calendar/new`, `/dashboard/calendar/[scheduleId]`): schedule approved drafts to a connected Facebook Page or Instagram account, then reschedule, cancel, or retry them. Every change is recorded in the scheduling history. UTC is stored, IANA timezones are supported, and nonexistent or ambiguous DST times are rejected.
+- **Worker**: `python -m app.worker` (Docker service `worker`) claims due posts atomically, revalidates approval, account, and media, and publishes through the Phase 7 publishing service. It also handles retries, crash recovery, Redis outages, and missed publishing windows.
+- **Queue** (`/dashboard/publishing/queue`): what is publishing, what is waiting to retry, what needs attention, and what is coming up.
+- Details: [docs/phase-8-scheduling.md](docs/phase-8-scheduling.md).
 
 ## Folder structure
 
@@ -329,6 +345,18 @@ Manual smoke test:
 5. In Security settings, verify session listing, single-session revoke, and log out all.
 6. Confirm unauthenticated workspace requests return 401 and an authenticated non-member receives 404 for another workspace.
 
+## Running the worker locally
+
+Publishing and scheduling require the background worker in addition to the API:
+
+```
+cd backend
+alembic upgrade head
+python -m app.worker        # or: make worker
+```
+
+With Docker Compose, the `worker` service starts automatically. It needs the same `DATABASE_URL`, `REDIS_URL`, `LOCAL_STORAGE_PATH`, and secrets as the backend. To publish posts with media, set `PUBLIC_MEDIA_BASE_URL` (a public HTTPS address that Meta can reach, for example a tunnel) and `MEDIA_URL_SIGNING_SECRET`. The Phase 7/8 variables are documented in `.env.example`.
+
 ## Troubleshooting
 
 - If Python is not in PATH, use the full path to the interpreter.
@@ -357,8 +385,8 @@ Do not connect or push a remote without explicit permission.
 - Phase 4: Research, source extraction, and citations (implemented; live providers remain environment-dependent).
 - Phase 5: Content projects and drafts, version history, platform validation, and approval workflows (implemented).
 - Phase 6: AI ideation, writing, repurposing, critique, and fact-checking.
-- Phase 7: Studio, media handling, previews, and first publishing workflow.
-- Phase 8: Calendar, scheduling, retries, and queue recovery.
+- Phase 7: Studio, media handling, previews, and first publishing workflow (implemented; live Meta publishing not verified).
+- Phase 8: Calendar, scheduling, retries, and queue recovery (implemented; live Meta publishing not verified).
 - Phase 9: Additional social platforms according to customer demand.
 - Phase 10: Analytics, performance insights, and AI usage tracking.
 - Phase 11: Controlled workflow automations with approval gates and run history.

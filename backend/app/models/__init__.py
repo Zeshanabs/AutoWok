@@ -8,7 +8,14 @@ from app.models.brand import (
     ContentPillar,
     TargetAudience,
 )
-from app.models.content import ContentApproval, ContentDraft, ContentProject, ContentPublication, ContentVersion
+from app.models.content import (
+    ContentApproval,
+    ContentDraft,
+    ContentProject,
+    ContentPublication,
+    ContentVersion,
+    PublishingAttempt,
+)
 from app.models.media_asset import MediaAsset
 from app.models.research import (
     ResearchFinding,
@@ -18,6 +25,7 @@ from app.models.research import (
     ResearchSource,
     ResearchUsageLog,
 )
+from app.models.scheduling import ScheduledPost, SchedulingHistory
 from app.models.session import Session
 from app.models.social_account import (
     MetaAuthorization,
@@ -41,6 +49,7 @@ __all__ = [
     "ContentProject",
     "ContentPublication",
     "ContentVersion",
+    "PublishingAttempt",
     "MediaAsset",
     "MetaAuthorization",
     "OAuthState",
@@ -50,6 +59,8 @@ __all__ = [
     "ResearchReport",
     "ResearchSource",
     "ResearchUsageLog",
+    "ScheduledPost",
+    "SchedulingHistory",
     "Session",
     "SocialAccount",
     "SocialAccountCredential",

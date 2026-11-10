@@ -55,6 +55,31 @@ class Settings(BaseSettings):
         default="", alias="TOKEN_ENCRYPTION_KEY_PREVIOUS"
     )
     meta_webhook_verify_token: str = Field(default="", alias="META_WEBHOOK_VERIFY_TOKEN")
+    storage_provider: Literal["local"] = Field(default="local", alias="STORAGE_PROVIDER")
+    media_max_image_bytes: int = Field(default=8 * 1024 * 1024, gt=0, alias="MEDIA_MAX_IMAGE_BYTES")
+    media_max_video_bytes: int = Field(default=100 * 1024 * 1024, gt=0, alias="MEDIA_MAX_VIDEO_BYTES")
+    media_url_signing_secret: str = Field(default="", alias="MEDIA_URL_SIGNING_SECRET")
+    media_signed_url_ttl_seconds: int = Field(
+        default=3600, ge=60, le=86400, alias="MEDIA_SIGNED_URL_TTL_SECONDS"
+    )
+    public_media_base_url: str = Field(default="", alias="PUBLIC_MEDIA_BASE_URL")
+    publishing_max_attempts: int = Field(default=3, ge=1, le=10, alias="PUBLISHING_MAX_ATTEMPTS")
+    publishing_backoff_base_seconds: float = Field(
+        default=30, gt=0, le=3600, alias="PUBLISHING_BACKOFF_BASE_SECONDS"
+    )
+    publishing_backoff_max_seconds: float = Field(
+        default=900, gt=0, le=86400, alias="PUBLISHING_BACKOFF_MAX_SECONDS"
+    )
+    publishing_lease_seconds: int = Field(default=600, ge=30, le=7200, alias="PUBLISHING_LEASE_SECONDS")
+    worker_poll_interval_seconds: float = Field(
+        default=15, gt=0, le=600, alias="WORKER_POLL_INTERVAL_SECONDS"
+    )
+    default_timezone: str = Field(default="UTC", alias="DEFAULT_TIMEZONE")
+    schedule_min_lead_seconds: int = Field(default=60, ge=0, le=86400, alias="SCHEDULE_MIN_LEAD_SECONDS")
+    schedule_max_horizon_days: int = Field(default=365, ge=1, le=1825, alias="SCHEDULE_MAX_HORIZON_DAYS")
+    schedule_max_lateness_seconds: int = Field(
+        default=6 * 3600, ge=60, le=7 * 86400, alias="SCHEDULE_MAX_LATENESS_SECONDS"
+    )
 
     model_config = SettingsConfigDict(
         env_file=_ROOT_ENV_FILE,
@@ -145,6 +170,34 @@ class Settings(BaseSettings):
         ):
             raise ValueError("META_REDIRECT_URI must be an HTTPS URL (HTTP is allowed for localhost).")
         parsed.port
+        return value
+
+    @field_validator("public_media_base_url")
+    @classmethod
+    def validate_public_media_base_url(cls, value: str) -> str:
+        if not value:
+            return value
+        parsed = urlsplit(value)
+        if (
+            parsed.scheme != "https"
+            or not parsed.hostname
+            or parsed.username
+            or parsed.password
+            or parsed.query
+            or parsed.fragment
+        ):
+            raise ValueError("PUBLIC_MEDIA_BASE_URL must be a public HTTPS URL.")
+        return value.rstrip("/")
+
+    @field_validator("default_timezone")
+    @classmethod
+    def validate_default_timezone(cls, value: str) -> str:
+        from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+        try:
+            ZoneInfo(value)
+        except (ZoneInfoNotFoundError, ValueError) as exc:
+            raise ValueError("DEFAULT_TIMEZONE must be an IANA timezone such as UTC.") from exc
         return value
 
     @model_validator(mode="after")

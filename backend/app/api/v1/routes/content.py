@@ -124,6 +124,7 @@ def _draft_read(draft: ContentDraft) -> ContentDraftRead:
         body=draft.body,
         cta=draft.cta,
         hashtags=draft.hashtags or [],
+        media_asset_ids=list(draft.media_asset_ids or []),
         status=draft.status,
         ai_generated=draft.ai_generated,
         version_count=draft.version_count,
@@ -463,6 +464,8 @@ def restore_content_draft_version(
     draft.body = version.body
     draft.cta = version.cta
     draft.hashtags = list(version.hashtags or [])
+    if isinstance(version.snapshot, dict) and isinstance(version.snapshot.get("media_asset_ids"), list):
+        draft.media_asset_ids = [str(item) for item in version.snapshot["media_asset_ids"]]
     _mark_project_revised(draft.project)
     ContentStudioService(db).create_version(
         draft,

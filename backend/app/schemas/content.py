@@ -247,6 +247,7 @@ class ContentDraftRead(APIModel):
     body: str | None
     cta: str | None
     hashtags: list[str]
+    media_asset_ids: list[str] = Field(default_factory=list)
     status: str
     ai_generated: bool
     version_count: int

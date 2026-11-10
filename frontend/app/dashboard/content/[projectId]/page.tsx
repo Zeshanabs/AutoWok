@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { useAuth } from "@/components/auth-provider";
+import { DraftPublishing } from "@/components/draft-publishing";
 import { AppShell, ProtectedPage } from "@/components/route-guards";
 import { ApiError, apiRequest } from "@/lib/api";
 import type {
@@ -34,6 +36,7 @@ function errorMessage(error: unknown, fallback: string): string {
 
 export default function ContentProjectPage() {
   const { projectId } = useParams<{ projectId: string }>();
+  const { workspaces } = useAuth();
   const [project, setProject] = useState<ContentProject | null>(null);
   const [drafts, setDrafts] = useState<ContentDraft[]>([]);
   const [approvals, setApprovals] = useState<ContentApproval[]>([]);
@@ -341,6 +344,14 @@ export default function ContentProjectPage() {
                         {[...validation.errors, ...validation.warnings].map((item) => <p key={item} className="mt-1">{item}</p>)}
                       </div>
                     )}
+
+                    <DraftPublishing
+                      draft={draft}
+                      project={project}
+                      role={workspaces.find((workspace) => workspace.id === project.workspace_id)?.role}
+                      disabled={["ready_for_review", "in_review", "archived"].includes(project.status)}
+                      onChanged={loadProject}
+                    />
 
                     {draft.versions.length > 0 && (
                       <details className="rounded-xl border border-slate-200 p-3">

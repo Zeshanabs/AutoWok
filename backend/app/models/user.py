@@ -32,6 +32,8 @@ class User(Base):
         DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False
     )
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Preferred IANA timezone for scheduling and calendar display (None = app default).
+    timezone: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     owned_workspaces: Mapped[list[Workspace]] = relationship(
         "Workspace", back_populates="owner", foreign_keys="Workspace.owner_id"

@@ -52,6 +52,7 @@ export type ContentDraft = {
   body: string | null;
   cta: string | null;
   hashtags: string[];
+  media_asset_ids: string[];
   status: string;
   ai_generated: boolean;
   version_count: number;
