@@ -1,5 +1,11 @@
 from app.models.audit_log import AuditLog
 from app.models.ai_provider import AIProviderConfig
+from app.models.analytics import (
+    AnalyticsSnapshot,
+    AnalyticsSyncJob,
+    PostAnalytics,
+    PostAnalyticsHistory,
+)
 from app.models.brand import (
     Brand,
     BrandGoal,
@@ -38,6 +44,8 @@ from app.models.workspace import Workspace, WorkspaceMembership
 
 __all__ = [
     "AIProviderConfig",
+    "AnalyticsSnapshot",
+    "AnalyticsSyncJob",
     "AuditLog",
     "Brand",
     "BrandGoal",
@@ -51,6 +59,8 @@ __all__ = [
     "ContentVersion",
     "PublishingAttempt",
     "MediaAsset",
+    "PostAnalytics",
+    "PostAnalyticsHistory",
     "MetaAuthorization",
     "OAuthState",
     "ResearchFinding",

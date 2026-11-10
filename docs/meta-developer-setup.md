@@ -12,7 +12,10 @@ This guide configures Meta OAuth for the Facebook Login flow used to discover Fa
    - `pages_show_list` to list Pages the user can access.
    - `pages_read_engagement` for Page/Instagram-related Graph API access as required by Meta.
    - `instagram_basic` to read basic metadata for linked Instagram Professional accounts.
-   OAuth completes only when Meta reports all three permissions as granted.
+   - `read_insights` (Phase 9) to read Page Insights; the connecting user also needs the ANALYZE task on the Page.
+   - `instagram_manage_insights` (Phase 9) to read Instagram account and media insights.
+   - Publishing permissions from Phase 7 (`pages_manage_posts`, `publish_video`, `instagram_content_publish`).
+   OAuth completes only when Meta reports the first three permissions as granted; the insights and publishing permissions are optional and are checked per feature. Accounts connected without them show insights as unavailable until reconnected (see [Phase 9 analytics](./phase-9-analytics.md)).
 5. Keep the app in development mode for initial testing. Add developers, testers, and other permitted test roles to the app and test with their eligible assets.
 6. For access to users or assets outside app roles, request the access level Meta requires for the relevant permissions and complete App Review, business verification, and data-handling requirements that Meta applies to the app. Approval is controlled by Meta and is not included in this repository.
 

@@ -8,7 +8,7 @@ The long-term product aims to help teams establish a brand, research topics with
 
 ## Current phase
 
-Phases 1–6 provide authentication and workspaces, brand profiles and AI configuration, Meta/Groq integration foundations, research with citations, content projects with versioning and approvals, and Groq-based content intelligence. **Phase 7** adds the media library, platform previews, and controlled immediate publishing to Facebook Pages and Instagram Professional accounts. **Phase 8** adds the content calendar, timezone-aware scheduling, and the automated publishing queue. Automated tests use mocked or local dependencies. Live Meta publishing, Meta App Review, and PostgreSQL/Docker runs of Phases 7–8 remain **unverified** in this environment.
+Phases 1–6 provide authentication and workspaces, brand profiles and AI configuration, Meta/Groq integration foundations, research with citations, content projects with versioning and approvals, and Groq-based content intelligence. **Phase 7** adds the media library, platform previews, and controlled immediate publishing to Facebook Pages and Instagram Professional accounts. **Phase 8** adds the content calendar, timezone-aware scheduling, and the automated publishing queue. **Phase 9** adds Facebook Page and Instagram analytics: background insight collection, account and post performance, platform comparison, content-performance rankings, and CSV/PDF reports. Automated tests use mocked or local dependencies. Live Meta publishing and insight retrieval, Meta App Review, and PostgreSQL/Docker runs of Phases 7–9 remain **unverified** in this environment.
 
 ## Technology stack
 
@@ -44,6 +44,15 @@ This implementation adds modular AI content intelligence utilities that can be u
 - **Worker**: `python -m app.worker` (Docker service `worker`) claims due posts atomically, revalidates approval, account, and media, and publishes through the Phase 7 publishing service. It also handles retries, crash recovery, Redis outages, and missed publishing windows.
 - **Queue** (`/dashboard/publishing/queue`): what is publishing, what is waiting to retry, what needs attention, and what is coming up.
 - Details: [docs/phase-8-scheduling.md](docs/phase-8-scheduling.md).
+
+## Phase 9: Analytics, performance tracking, and reporting
+
+- **Dashboard** (`/dashboard/analytics`, `/accounts`, `/posts`, `/content-performance`, `/reports`): per-platform key metrics with previous-period change, reach/views/engagement/follower charts, account insights, a post-performance table with filters, sorting, details, history and side-by-side comparison, content-format and trend analysis, and report exports. One filter row (date range, brand, platform, account) scopes everything.
+- **Metrics**: only metrics documented in Meta's current Page Insights, Page Post, Instagram account and media insights references (Graph API v26.0). Deprecated impression metrics are not used; Facebook "media views" and Instagram `views` are their replacements. Missing values are shown as unavailable with the reason, never as zero, and Facebook and Instagram definitions are kept separate (engagement is never combined across platforms).
+- **Calculations** (documented and tested): engagement rate by reach with platform-specific definitions, percentage change, audience growth from follower snapshots, deterministic rankings. Calculated values are labelled.
+- **Synchronization**: the worker (`python -m app.worker`) collects insights for each connected account every `ANALYTICS_SYNC_INTERVAL_HOURS`, stores dated snapshots without duplicates, honours Meta rate limits and retries transient errors; expired tokens and missing permissions are surfaced per account. Owners and Admins can request a rate-limited manual refresh.
+- **Reports**: CSV and PDF exports with the reporting period, accounts, key metrics, post summaries, metric definitions, collection timestamps and missing-data explanations; workspace-scoped.
+- **Permissions**: Meta login now also requests `read_insights` and `instagram_manage_insights` (optional; accounts connected earlier must reconnect to collect insights). Live retrieval is **NOT VERIFIED**; see [docs/phase-9-analytics.md](docs/phase-9-analytics.md).
 
 ## Folder structure
 
@@ -277,6 +286,7 @@ The API is versioned under `/api/v1`:
 | GET | `/oauth/meta/authorize` and `/oauth/meta/callback` | Start and complete Meta OAuth |
 | GET, POST | `/workspaces/{workspace_id}/social-accounts/meta/{facebook-pages,instagram-accounts,connect}` | Discover and connect eligible Meta accounts |
 | GET, PATCH, POST | `/workspaces/{workspace_id}/social-accounts[/{account_id}]` | List, associate, verify, and disconnect workspace accounts |
+| GET, POST | `/workspaces/{workspace_id}/analytics/{overview,timeseries,accounts,posts,platforms/compare,content-performance,sync,reports}` | Phase 9 analytics, synchronization, and report exports (see docs) |
 | GET, POST | `/content/projects` | List or create workspace content projects |
 | GET, PATCH, DELETE | `/content/projects/{project_id}` | Read, update, or delete a content project |
 | GET, POST | `/content/projects/{project_id}/drafts` | List or create a platform draft |
@@ -347,7 +357,7 @@ Manual smoke test:
 
 ## Running the worker locally
 
-Publishing and scheduling require the background worker in addition to the API:
+Publishing, scheduling, and analytics synchronization require the background worker in addition to the API:
 
 ```
 cd backend
@@ -355,7 +365,7 @@ alembic upgrade head
 python -m app.worker        # or: make worker
 ```
 
-With Docker Compose, the `worker` service starts automatically. It needs the same `DATABASE_URL`, `REDIS_URL`, `LOCAL_STORAGE_PATH`, and secrets as the backend. To publish posts with media, set `PUBLIC_MEDIA_BASE_URL` (a public HTTPS address that Meta can reach, for example a tunnel) and `MEDIA_URL_SIGNING_SECRET`. The Phase 7/8 variables are documented in `.env.example`.
+With Docker Compose, the `worker` service starts automatically. It needs the same `DATABASE_URL`, `REDIS_URL`, `LOCAL_STORAGE_PATH`, and secrets as the backend. To publish posts with media, set `PUBLIC_MEDIA_BASE_URL` (a public HTTPS address that Meta can reach, for example a tunnel) and `MEDIA_URL_SIGNING_SECRET`. The Phase 7/8/9 variables are documented in `.env.example`; analytics settings are described in [docs/phase-9-analytics.md](docs/phase-9-analytics.md).
 
 ## Troubleshooting
 
@@ -387,8 +397,8 @@ Do not connect or push a remote without explicit permission.
 - Phase 6: AI ideation, writing, repurposing, critique, and fact-checking.
 - Phase 7: Studio, media handling, previews, and first publishing workflow (implemented; live Meta publishing not verified).
 - Phase 8: Calendar, scheduling, retries, and queue recovery (implemented; live Meta publishing not verified).
-- Phase 9: Additional social platforms according to customer demand.
-- Phase 10: Analytics, performance insights, and AI usage tracking.
+- Phase 9: Analytics, performance tracking, and reporting for Facebook Pages and Instagram (implemented; live Meta insights not verified).
+- Phase 10: Additional social platforms according to customer demand, and AI usage tracking.
 - Phase 11: Controlled workflow automations with approval gates and run history.
 - Phase 12: Multi-agent intelligence and advanced research capabilities.
 - Phase 13: Optimization, accessibility, monitoring, backups, and advanced features.

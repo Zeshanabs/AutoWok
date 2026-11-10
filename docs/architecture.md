@@ -110,7 +110,7 @@ All endpoints are under `/api/v1`.
 | GET, POST | `/workspaces/{workspace_id}/social-accounts/meta/{facebook-pages,instagram-accounts,connect}` | Owner or admin; discovery and connection |
 | GET, PATCH, POST | `/workspaces/{workspace_id}/social-accounts[/{id}]` | Read: member; updates, verification, and disconnect: owner or admin |
 
-Phase 7 and 8 endpoints for media, publishing, scheduling, calendar, queue, and preferences are listed in [phase-7-media-publishing.md](phase-7-media-publishing.md) and [phase-8-scheduling.md](phase-8-scheduling.md). Members can read them; only Owners and Admins can publish or schedule.
+Phase 9 analytics endpoints are listed in [phase-9-analytics.md](phase-9-analytics.md). Phase 7 and 8 endpoints for media, publishing, scheduling, calendar, queue, and preferences are listed in [phase-7-media-publishing.md](phase-7-media-publishing.md) and [phase-8-scheduling.md](phase-8-scheduling.md). Members can read them; only Owners and Admins can publish or schedule.
 
 ## Media, publishing, and scheduling (Phases 7–8)
 
@@ -126,6 +126,24 @@ Meta ──GET signed URL──▶ /public-media/{id} (HMAC, expiring) ──▶
 - `content_publications` (jobs) and `publishing_attempts` are the only publishing records. Immediate publishing (`source=manual`) and scheduled publishing (`source=schedule`) share them.
 - `scheduled_posts` and `scheduling_history` describe *when* to publish. At the due time the scheduler creates a job in the same transaction as the claim.
 - Concurrency control comes from conditional `UPDATE`s on status, revision, and lease, unique idempotency keys, and unique `active_guard` columns. Any number of API and worker processes can run.
+
+## Analytics (Phase 9)
+
+```
+Worker --schedule_analytics_syncs--> analytics_sync_jobs <-- POST /workspaces/{id}/analytics/sync (Owner/Admin)
+Worker --run_analytics_syncs--> claim job --> MetaInsightsCollector --> Meta Graph API (insights, fields, posts)
+                                   | normalize through the metric catalogue
+                                   v
+            analytics_snapshots (account metric per day) . post_analytics (+ post_analytics_history)
+                                   ^
+            GET /workspaces/{id}/analytics/* -- queries, calculations, CSV/PDF reports --> /dashboard/analytics
+```
+
+* Analytics never calls Meta on page load; dashboards read stored snapshots that carry the source metric name, unit, API version and collection time.
+* Only metrics documented in Meta's current references are collected (`app/services/analytics/metrics.py`); deprecated impression metrics are excluded and missing values are stored as `NULL`, never 0.
+* Facebook and Instagram values are kept separate; cross-platform totals exist only for keys marked comparable, and engagement definitions are shown per platform.
+* Sync jobs are claimed with conditional updates, retried with bounded backoff (rate limits honour Meta's `estimated_time_to_regain_access`), and one active job per account is enforced by a unique guard. Manual refreshes are rate limited per user and per account.
+* Tokens are decrypted only in the worker and never leave the server. Details: [phase-9-analytics.md](phase-9-analytics.md).
 
 Authentication failures use generic login responses. Inaccessible workspace details and membership lists return 404 to limit resource enumeration.
 
@@ -145,6 +163,7 @@ The root `.env.example` documents:
 - `TOKEN_ENCRYPTION_KEY` and optional `TOKEN_ENCRYPTION_KEY_PREVIOUS` for Meta credentials.
 - Phase 7: `STORAGE_PROVIDER`, `MEDIA_MAX_IMAGE_BYTES`, `MEDIA_MAX_VIDEO_BYTES`, `MEDIA_URL_SIGNING_SECRET`, `MEDIA_SIGNED_URL_TTL_SECONDS`, `PUBLIC_MEDIA_BASE_URL`, `PUBLISHING_MAX_ATTEMPTS`, `PUBLISHING_BACKOFF_BASE_SECONDS`, `PUBLISHING_BACKOFF_MAX_SECONDS`, `PUBLISHING_LEASE_SECONDS`, `WORKER_POLL_INTERVAL_SECONDS`.
 - Phase 8: `DEFAULT_TIMEZONE`, `SCHEDULE_MIN_LEAD_SECONDS`, `SCHEDULE_MAX_HORIZON_DAYS`, `SCHEDULE_MAX_LATENESS_SECONDS`.
+- Phase 9: `ANALYTICS_ENABLED`, `ANALYTICS_SYNC_INTERVAL_HOURS`, `ANALYTICS_INITIAL_LOOKBACK_DAYS`, `ANALYTICS_INCREMENTAL_LOOKBACK_DAYS`, `ANALYTICS_POST_LOOKBACK_DAYS`, `ANALYTICS_MAX_POSTS_PER_SYNC`, `ANALYTICS_SYNC_MAX_ATTEMPTS`, `ANALYTICS_SYNC_LEASE_SECONDS`, `ANALYTICS_MANUAL_REFRESH_COOLDOWN_MINUTES`, `ANALYTICS_MANUAL_REFRESH_LIMIT_PER_HOUR`.
 
 Do not commit `.env` or use secrets in public frontend variables. Direct backend startup requires `alembic upgrade head`; the Docker backend applies migrations before starting. Migrations are additive and do not drop Phase 0 data. Run `alembic upgrade head` with the deployment PostgreSQL connection before rollout and verify a backup/restore procedure separately.
 
@@ -156,4 +175,4 @@ Do not commit `.env` or use secrets in public frontend variables. Direct backend
 
 ## Remaining work and trade-offs
 
-Email verification delivery, password recovery, account invitations, MFA, workspace deletion, and ownership transfer are not implemented. Publishing (Phase 7) and scheduling (Phase 8) are implemented but only verified against a mocked Meta API. Phase 3 tests use mocks; real vendor credentials, Meta App Review, and live API calls remain unverified. Apply and verify PostgreSQL migrations in the deployment environment. Session activity metadata stores a bounded user-agent string but exposes only a coarse device label. Authentication rate-limit counters are ephemeral and Redis-backed; a Redis outage blocks authentication rather than disabling protection. Production HTTPS termination, proxy trust, monitoring, backups, and operational key/secret rotation must be configured by the deployment environment.
+Email verification delivery, password recovery, account invitations, MFA, workspace deletion, and ownership transfer are not implemented. Publishing (Phase 7), scheduling (Phase 8) and analytics collection (Phase 9) are implemented but only verified against a mocked Meta API. Phase 3 tests use mocks; real vendor credentials, Meta App Review, and live API calls remain unverified. Apply and verify PostgreSQL migrations in the deployment environment. Session activity metadata stores a bounded user-agent string but exposes only a coarse device label. Authentication rate-limit counters are ephemeral and Redis-backed; a Redis outage blocks authentication rather than disabling protection. Production HTTPS termination, proxy trust, monitoring, backups, and operational key/secret rotation must be configured by the deployment environment.

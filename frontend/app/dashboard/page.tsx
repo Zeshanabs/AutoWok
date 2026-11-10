@@ -86,6 +86,9 @@ export default function DashboardPage() {
           <Link href="/dashboard/publishing" className="font-semibold text-indigo-700">
             Publishing
           </Link>
+          <Link href="/dashboard/analytics" className="font-semibold text-indigo-700">
+            Analytics
+          </Link>
           <Link href="/settings/ai" className="font-semibold text-indigo-700">
             AI provider settings
           </Link>

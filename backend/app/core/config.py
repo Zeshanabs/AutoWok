@@ -80,6 +80,23 @@ class Settings(BaseSettings):
     schedule_max_lateness_seconds: int = Field(
         default=6 * 3600, ge=60, le=7 * 86400, alias="SCHEDULE_MAX_LATENESS_SECONDS"
     )
+    # Phase 9: analytics synchronization
+    analytics_enabled: bool = Field(default=True, alias="ANALYTICS_ENABLED")
+    analytics_sync_interval_hours: float = Field(default=12, ge=1, le=168, alias="ANALYTICS_SYNC_INTERVAL_HOURS")
+    analytics_initial_lookback_days: int = Field(default=30, ge=1, le=90, alias="ANALYTICS_INITIAL_LOOKBACK_DAYS")
+    analytics_incremental_lookback_days: int = Field(
+        default=3, ge=1, le=30, alias="ANALYTICS_INCREMENTAL_LOOKBACK_DAYS"
+    )
+    analytics_post_lookback_days: int = Field(default=90, ge=1, le=730, alias="ANALYTICS_POST_LOOKBACK_DAYS")
+    analytics_max_posts_per_sync: int = Field(default=100, ge=1, le=1000, alias="ANALYTICS_MAX_POSTS_PER_SYNC")
+    analytics_sync_max_attempts: int = Field(default=3, ge=1, le=10, alias="ANALYTICS_SYNC_MAX_ATTEMPTS")
+    analytics_sync_lease_seconds: int = Field(default=900, ge=60, le=7200, alias="ANALYTICS_SYNC_LEASE_SECONDS")
+    analytics_manual_refresh_cooldown_minutes: int = Field(
+        default=15, ge=0, le=1440, alias="ANALYTICS_MANUAL_REFRESH_COOLDOWN_MINUTES"
+    )
+    analytics_manual_refresh_limit_per_hour: int = Field(
+        default=6, ge=1, le=100, alias="ANALYTICS_MANUAL_REFRESH_LIMIT_PER_HOUR"
+    )
 
     model_config = SettingsConfigDict(
         env_file=_ROOT_ENV_FILE,

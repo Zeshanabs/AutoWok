@@ -14,14 +14,56 @@ META_SCOPES = ("pages_show_list", "pages_read_engagement", "instagram_basic")
 FACEBOOK_PUBLISH_SCOPES = ("pages_manage_posts", "pages_read_engagement", "pages_show_list")
 FACEBOOK_VIDEO_SCOPES = ("publish_video",)
 INSTAGRAM_PUBLISH_SCOPES = ("instagram_basic", "instagram_content_publish", "pages_read_engagement")
+# Phase 9 analytics. Page Insights require ``read_insights`` (plus the
+# ANALYZE Page task); Instagram account/media insights require
+# ``instagram_manage_insights``. Both are optional at callback time; accounts
+# connected without them show insights as unavailable until reconnected.
+FACEBOOK_INSIGHTS_SCOPES = ("read_insights", "pages_read_engagement", "pages_show_list")
+INSTAGRAM_INSIGHTS_SCOPES = ("instagram_manage_insights", "instagram_basic", "pages_read_engagement")
 META_REQUESTED_SCOPES = tuple(
-    dict.fromkeys(META_SCOPES + FACEBOOK_PUBLISH_SCOPES + FACEBOOK_VIDEO_SCOPES + INSTAGRAM_PUBLISH_SCOPES)
+    dict.fromkeys(
+        META_SCOPES
+        + FACEBOOK_PUBLISH_SCOPES
+        + FACEBOOK_VIDEO_SCOPES
+        + INSTAGRAM_PUBLISH_SCOPES
+        + FACEBOOK_INSIGHTS_SCOPES
+        + INSTAGRAM_INSIGHTS_SCOPES
+    )
 )
 PAGE_FIELDS = (
     "id,name,username,category,picture{url},"
     "access_token,tasks,"
     "instagram_business_account{id,username,account_type,profile_picture_url}"
 )
+
+
+def _retry_after_seconds(headers: Any) -> int | None:
+    """Parse Meta's ``estimated_time_to_regain_access`` (minutes) if present.
+
+    The header is untrusted input: only a bounded positive integer is used.
+    """
+    import json
+
+    raw = headers.get("x-business-use-case-usage") if headers is not None else None
+    if not isinstance(raw, str) or not raw:
+        return None
+    try:
+        parsed = json.loads(raw)
+    except ValueError:
+        return None
+    minutes: list[int] = []
+    if isinstance(parsed, dict):
+        for entries in parsed.values():
+            if not isinstance(entries, list):
+                continue
+            for entry in entries:
+                if isinstance(entry, dict):
+                    value = entry.get("estimated_time_to_regain_access")
+                    if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+                        minutes.append(value)
+    if not minutes:
+        return None
+    return min(max(minutes), 24 * 60) * 60
 
 
 class MetaGraphError(RuntimeError):
@@ -34,10 +76,14 @@ class MetaGraphError(RuntimeError):
         meta_message: str | None = None,
         is_transient: bool = False,
         request_sent: bool = True,
+        retry_after_seconds: int | None = None,
     ) -> None:
         self.status_code = status_code
         self.code = code
         self.subcode = subcode
+        # Meta's estimated wait (from the X-Business-Use-Case-Usage header)
+        # when a Business Use Case rate limit was hit; None when unknown.
+        self.retry_after_seconds = retry_after_seconds
         # Meta error messages do not contain access tokens; they are still
         # truncated before storage.
         self.meta_message = (meta_message or "")[:500] or None
@@ -241,6 +287,7 @@ class MetaGraphClient:
                 subcode=subcode if isinstance(subcode, int) else None,
                 meta_message=message if isinstance(message, str) else None,
                 is_transient=bool(error.get("is_transient")),
+                retry_after_seconds=_retry_after_seconds(response.headers),
             )
         if not isinstance(body, dict):
             raise MetaGraphError(502)

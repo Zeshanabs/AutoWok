@@ -90,6 +90,9 @@ export function AppShell({ children }: { children: ReactNode }) {
             <Link href="/dashboard/publishing" className="hover:text-indigo-700">
               Publishing
             </Link>
+            <Link href="/dashboard/analytics" className="hover:text-indigo-700">
+              Analytics
+            </Link>
             <Link href="/settings/ai" className="hover:text-indigo-700">
               AI settings
             </Link>
