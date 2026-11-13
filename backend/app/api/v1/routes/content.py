@@ -20,6 +20,7 @@ from app.models import (
     WorkspaceMembership,
 )
 from app.schemas.content import (
+    ContentAssignRequest,
     ContentApprovalDecision,
     ContentApprovalRead,
     ContentApprovalSubmit,
@@ -32,6 +33,8 @@ from app.schemas.content import (
     DraftVersionRead,
     PlatformValidationRead,
 )
+from app.services.audit import record_audit
+from app.services.automation import events as automation_events
 from app.services.content_studio import ContentStudioService, ContentValidationError
 
 router = APIRouter(tags=["content studio"])
@@ -168,6 +171,8 @@ def create_content_project(
         status="draft",
     )
     db.add(project)
+    db.flush()
+    automation_events.emit_content_created(db, project, actor_user_id=current_user.id)
     db.commit()
     db.refresh(project)
     return _project_read(project)
@@ -255,6 +260,7 @@ def update_content_project(
             setattr(project, field, value)
     _mark_project_revised(project)
     project.updated_at = datetime.now(timezone.utc)
+    automation_events.emit_content_updated(db, project, actor_user_id=current_user.id, change="project")
     db.commit()
     db.refresh(project)
     return _project_read(project)
@@ -294,6 +300,7 @@ def generate_content_draft(
     draft.ai_generated = True
     _mark_project_revised(project)
     service.create_version(draft, change_reason="AI-generated draft", created_by=current_user.id)
+    automation_events.emit_content_updated(db, project, actor_user_id=current_user.id, change=f"draft:{draft.id}:{draft.version_count}")
     db.commit()
     db.refresh(draft)
     return _draft_read(draft)
@@ -402,6 +409,7 @@ def update_content_draft(
         service = ContentStudioService(db)
         service.create_version(draft, change_reason="Manual revision saved", created_by=current_user.id)
         _mark_project_revised(draft.project)
+        automation_events.emit_content_updated(db, draft.project, actor_user_id=current_user.id, change=f"draft:{draft.id}:{draft.version_count}")
     draft.updated_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(draft)
@@ -472,6 +480,7 @@ def restore_content_draft_version(
         change_reason=f"Restored version {version.version_number}",
         created_by=current_user.id,
     )
+    automation_events.emit_content_updated(db, draft.project, actor_user_id=current_user.id, change=f"restore:{draft.id}:{draft.version_count}")
     db.commit()
     db.refresh(draft)
     return _draft_read(draft)
@@ -533,6 +542,8 @@ def submit_for_approval(
         comments=payload.comments if payload else None,
     )
     db.add(approval)
+    db.flush()
+    automation_events.emit_content_submitted(db, project, approval, actor_user_id=current_user.id)
     db.commit()
     db.refresh(approval)
     return _approval_read(approval)
@@ -580,9 +591,51 @@ def decide_content_approval(
     draft_status = status_by_decision[decision]
     for draft in project.drafts:
         draft.status = draft_status
+    automation_events.emit_content_decided(db, project, approval, reviewer_id=current_user.id)
     db.commit()
     db.refresh(approval)
     return _approval_read(approval)
+
+
+@router.post("/content/projects/{project_id}/assign", response_model=ContentProjectRead)
+def assign_content_project(
+    project_id: UUID,
+    payload: ContentAssignRequest,
+    current_user: User = Depends(get_current_user),
+    db: DBSession = Depends(get_db),
+) -> ContentProjectRead:
+    """Assign (or unassign) a content post to a workspace member. Internal workflow metadata only."""
+    project = db.query(ContentProject).filter(ContentProject.id == project_id).first()
+    if project is None:
+        raise HTTPException(status_code=404, detail="Content project not found.")
+    _workspace_membership(db, current_user, project.workspace_id)
+    if project.status == "archived":
+        raise HTTPException(status_code=409, detail="Archived content cannot be assigned.")
+    if payload.user_id is not None:
+        assignee = (
+            db.query(WorkspaceMembership)
+            .filter(WorkspaceMembership.workspace_id == project.workspace_id, WorkspaceMembership.user_id == payload.user_id)
+            .first()
+        )
+        if assignee is None:
+            raise HTTPException(status_code=404, detail="The selected member does not belong to this workspace.")
+    changed = project.assigned_to != payload.user_id
+    project.assigned_to = payload.user_id
+    if changed:
+        record_audit(
+            db,
+            action="content.assigned" if payload.user_id else "content.unassigned",
+            resource_type="content_project",
+            actor_user_id=current_user.id,
+            workspace_id=project.workspace_id,
+            resource_id=project.id,
+            metadata={"assigned_to": str(payload.user_id) if payload.user_id else None},
+        )
+        if payload.user_id is not None:
+            automation_events.emit_team_member_assigned(db, project, assigned_by=current_user.id)
+    db.commit()
+    db.refresh(project)
+    return _project_read(project)
 
 
 @router.get("/content/projects/{project_id}/approvals", response_model=list[ContentApprovalRead])

@@ -46,6 +46,8 @@ logger = logging.getLogger("autowok.publishing")
 
 # Called after a job reaches a terminal or retry-wait state (used by scheduling).
 COMPLETION_HOOKS: list[Callable[[DBSession, ContentPublication], None]] = []
+# Called once a worker has claimed a job and recorded the attempt (used by automations).
+START_HOOKS: list[Callable[[DBSession, ContentPublication], None]] = []
 
 
 class PublishingConflict(Exception):
@@ -305,6 +307,13 @@ def process_publication(
     )
     db.add(attempt)
     db.commit()
+    for hook in START_HOOKS:
+        try:
+            hook(db, job)
+            db.commit()
+        except Exception:  # noqa: BLE001 - a hook must never break publishing
+            logger.exception("Publishing start hook failed for job %s", job.id)
+            db.rollback()
 
     recovered_from_publish = previous_status in {"processing", "publishing"} and job.stage == STAGE_PUBLISHING
     if recovered_from_publish and job.platform != "instagram":

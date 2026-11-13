@@ -195,6 +195,9 @@ def create_schedule(db: DBSession, target: ScheduleTarget, *, user_id: UUID) -> 
         resource_id=post.id,
         metadata={"scheduled_at": target.scheduled_at.isoformat(), "timezone": target.timezone},
     )
+    from app.services.automation.events import emit_post_scheduled
+
+    emit_post_scheduled(db, post)
     try:
         db.commit()
     except IntegrityError as exc:

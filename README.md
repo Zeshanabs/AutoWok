@@ -8,7 +8,7 @@ The long-term product aims to help teams establish a brand, research topics with
 
 ## Current phase
 
-Phases 1–6 provide authentication and workspaces, brand profiles and AI configuration, Meta/Groq integration foundations, research with citations, content projects with versioning and approvals, and Groq-based content intelligence. **Phase 7** adds the media library, platform previews, and controlled immediate publishing to Facebook Pages and Instagram Professional accounts. **Phase 8** adds the content calendar, timezone-aware scheduling, and the automated publishing queue. **Phase 9** adds Facebook Page and Instagram analytics: background insight collection, account and post performance, platform comparison, content-performance rankings, and CSV/PDF reports. Automated tests use mocked or local dependencies. Live Meta publishing and insight retrieval, Meta App Review, and PostgreSQL/Docker runs of Phases 7–9 remain **unverified** in this environment.
+Phases 1–6 provide authentication and workspaces, brand profiles and AI configuration, Meta/Groq integration foundations, research with citations, content projects with versioning and approvals, and Groq-based content intelligence. **Phase 7** adds the media library, platform previews, and controlled immediate publishing to Facebook Pages and Instagram Professional accounts. **Phase 8** adds the content calendar, timezone-aware scheduling, and the automated publishing queue. **Phase 9** adds Facebook Page and Instagram analytics: background insight collection, account and post performance, platform comparison, content-performance rankings, and CSV/PDF reports. **Phase 10** adds controlled, rule-based workflow automations (trigger → conditions → allowlisted actions) with dry-run testing, execution history, in-app notifications and internal tasks. Automated tests use mocked or local dependencies. Live Meta publishing and insight retrieval, Meta App Review, and PostgreSQL/Docker runs of Phases 7–10 remain **unverified** in this environment.
 
 ## Technology stack
 
@@ -53,6 +53,13 @@ This implementation adds modular AI content intelligence utilities that can be u
 - **Synchronization**: the worker (`python -m app.worker`) collects insights for each connected account every `ANALYTICS_SYNC_INTERVAL_HOURS`, stores dated snapshots without duplicates, honours Meta rate limits and retries transient errors; expired tokens and missing permissions are surfaced per account. Owners and Admins can request a rate-limited manual refresh.
 - **Reports**: CSV and PDF exports with the reporting period, accounts, key metrics, post summaries, metric definitions, collection timestamps and missing-data explanations; workspace-scoped.
 - **Permissions**: Meta login now also requests `read_insights` and `instagram_manage_insights` (optional; accounts connected earlier must reconnect to collect insights). Live retrieval is **NOT VERIFIED**; see [docs/phase-9-analytics.md](docs/phase-9-analytics.md).
+
+## Phase 10: Controlled workflow automations
+
+- **Automations** (`/dashboard/automations`, `/new`, `/[automationId]`, `/[automationId]/edit`): Owners and Admins build rules from a registered trigger (content created/submitted/approved/rejected/updated, post scheduled/publishing/published/failed/cancelled, analytics sync completed/failed, team member assigned, approval reminder due), optional AND/OR conditions validated against the trigger's payload schema, and ordered allowlisted actions (notify a member, notify admins, notify the creator/assignee, assign content, create a task, add a label, create an approval reminder, record a publishing incident, request an analytics refresh). Automations are saved as drafts, tested with a **dry run** that is always labelled simulated and creates nothing, then enabled after confirmation; they can be paused, resumed, edited, duplicated, archived and deleted, and every execution and step is listed with retry for eligible failures.
+- **Engine**: events are persisted in the same transaction as the business change (outbox), dispatched and executed by `python -m app.worker` with atomic claims, leases, bounded retries with backoff, idempotency keys, self-trigger and chain-depth loop protection, per-automation hourly/lifetime/cooldown/concurrency limits and a workspace daily limit. Automations never approve, publish, schedule or edit content; there is no code execution or outbound HTTP.
+- **Notifications and tasks** (`/dashboard/notifications`): personal in-app notifications with read state and workspace tasks (follow-ups, reminders, incidents) created by automations. Email is not implemented (no email service exists yet).
+- Details, limits and the trigger/condition/action reference: [docs/phase-10-automations.md](docs/phase-10-automations.md).
 
 ## Folder structure
 
@@ -287,6 +294,11 @@ The API is versioned under `/api/v1`:
 | GET, POST | `/workspaces/{workspace_id}/social-accounts/meta/{facebook-pages,instagram-accounts,connect}` | Discover and connect eligible Meta accounts |
 | GET, PATCH, POST | `/workspaces/{workspace_id}/social-accounts[/{account_id}]` | List, associate, verify, and disconnect workspace accounts |
 | GET, POST | `/workspaces/{workspace_id}/analytics/{overview,timeseries,accounts,posts,platforms/compare,content-performance,sync,reports}` | Phase 9 analytics, synchronization, and report exports (see docs) |
+| GET, POST | `/workspaces/{workspace_id}/automations[/catalog, /validate, /dry-run]` | Phase 10: list/create automations, trigger and action catalogue, validation, simulated test |
+| GET, PATCH, DELETE, POST | `/workspaces/{workspace_id}/automations/{automation_id}[/enable, /pause, /resume, /archive, /duplicate, /dry-run, /executions]` | Phase 10: manage one automation and read its history |
+| GET, POST | `/workspaces/{workspace_id}/automation-executions[/{execution_id}, /{execution_id}/retry]` | Phase 10: execution history and retry |
+| GET, POST | `/workspaces/{workspace_id}/notifications[/{id}/read, /read-all]`, `/workspaces/{workspace_id}/tasks[/{id}/complete, /{id}/reopen]` | Phase 10: in-app notifications and internal tasks |
+| POST | `/content/projects/{project_id}/assign` | Phase 10: assign a content post to a workspace member |
 | GET, POST | `/content/projects` | List or create workspace content projects |
 | GET, PATCH, DELETE | `/content/projects/{project_id}` | Read, update, or delete a content project |
 | GET, POST | `/content/projects/{project_id}/drafts` | List or create a platform draft |
@@ -357,7 +369,7 @@ Manual smoke test:
 
 ## Running the worker locally
 
-Publishing, scheduling, and analytics synchronization require the background worker in addition to the API:
+Publishing, scheduling, analytics synchronization, and automations require the background worker in addition to the API:
 
 ```
 cd backend
@@ -365,7 +377,7 @@ alembic upgrade head
 python -m app.worker        # or: make worker
 ```
 
-With Docker Compose, the `worker` service starts automatically. It needs the same `DATABASE_URL`, `REDIS_URL`, `LOCAL_STORAGE_PATH`, and secrets as the backend. To publish posts with media, set `PUBLIC_MEDIA_BASE_URL` (a public HTTPS address that Meta can reach, for example a tunnel) and `MEDIA_URL_SIGNING_SECRET`. The Phase 7/8/9 variables are documented in `.env.example`; analytics settings are described in [docs/phase-9-analytics.md](docs/phase-9-analytics.md).
+With Docker Compose, the `worker` service starts automatically. It needs the same `DATABASE_URL`, `REDIS_URL`, `LOCAL_STORAGE_PATH`, and secrets as the backend. To publish posts with media, set `PUBLIC_MEDIA_BASE_URL` (a public HTTPS address that Meta can reach, for example a tunnel) and `MEDIA_URL_SIGNING_SECRET`. The Phase 7/8/9/10 variables are documented in `.env.example`; analytics settings are described in [docs/phase-9-analytics.md](docs/phase-9-analytics.md) and automation limits in [docs/phase-10-automations.md](docs/phase-10-automations.md).
 
 ## Troubleshooting
 
@@ -398,6 +410,7 @@ Do not connect or push a remote without explicit permission.
 - Phase 7: Studio, media handling, previews, and first publishing workflow (implemented; live Meta publishing not verified).
 - Phase 8: Calendar, scheduling, retries, and queue recovery (implemented; live Meta publishing not verified).
 - Phase 9: Analytics, performance tracking, and reporting for Facebook Pages and Instagram (implemented; live Meta insights not verified).
+- Phase 10: Controlled workflow automations and rule-based execution (implemented; PostgreSQL migration not applied live in this environment).
 - Phase 10: Additional social platforms according to customer demand, and AI usage tracking.
 - Phase 11: Controlled workflow automations with approval gates and run history.
 - Phase 12: Multi-agent intelligence and advanced research capabilities.

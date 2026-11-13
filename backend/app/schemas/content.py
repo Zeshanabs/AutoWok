@@ -186,10 +186,16 @@ class ContentProjectRead(APIModel):
     desired_length: str | None
     research_report_id: UUID | None
     status: str
+    assigned_to: UUID | None = None
+    labels: list[str] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
     submitted_at: datetime | None
     approved_at: datetime | None
+
+
+class ContentAssignRequest(APIModel):
+    user_id: UUID | None = Field(default=None, description="Workspace member to assign, or null to unassign.")
 
 
 class ContentDraftCreate(APIModel):

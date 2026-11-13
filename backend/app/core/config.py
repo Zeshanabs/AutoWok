@@ -97,6 +97,34 @@ class Settings(BaseSettings):
     analytics_manual_refresh_limit_per_hour: int = Field(
         default=6, ge=1, le=100, alias="ANALYTICS_MANUAL_REFRESH_LIMIT_PER_HOUR"
     )
+    # Phase 10: controlled workflow automations
+    automation_enabled: bool = Field(default=True, alias="AUTOMATION_ENABLED")
+    automation_max_per_workspace: int = Field(default=50, ge=1, le=1000, alias="AUTOMATION_MAX_PER_WORKSPACE")
+    automation_max_actions: int = Field(default=10, ge=1, le=25, alias="AUTOMATION_MAX_ACTIONS")
+    automation_max_conditions: int = Field(default=20, ge=1, le=100, alias="AUTOMATION_MAX_CONDITIONS")
+    automation_max_condition_depth: int = Field(default=2, ge=1, le=4, alias="AUTOMATION_MAX_CONDITION_DEPTH")
+    automation_max_executions_per_hour: int = Field(
+        default=60, ge=1, le=10000, alias="AUTOMATION_MAX_EXECUTIONS_PER_HOUR"
+    )
+    automation_workspace_max_executions_per_day: int = Field(
+        default=1000, ge=1, le=100000, alias="AUTOMATION_WORKSPACE_MAX_EXECUTIONS_PER_DAY"
+    )
+    automation_max_chain_depth: int = Field(default=3, ge=0, le=10, alias="AUTOMATION_MAX_CHAIN_DEPTH")
+    automation_max_retries: int = Field(default=3, ge=0, le=10, alias="AUTOMATION_MAX_RETRIES")
+    automation_execution_timeout_seconds: int = Field(
+        default=60, ge=5, le=3600, alias="AUTOMATION_EXECUTION_TIMEOUT_SECONDS"
+    )
+    automation_lease_seconds: int = Field(default=300, ge=30, le=7200, alias="AUTOMATION_LEASE_SECONDS")
+    automation_max_concurrent_executions: int = Field(
+        default=2, ge=1, le=50, alias="AUTOMATION_MAX_CONCURRENT_EXECUTIONS"
+    )
+    automation_event_max_attempts: int = Field(default=5, ge=1, le=20, alias="AUTOMATION_EVENT_MAX_ATTEMPTS")
+    automation_backoff_base_seconds: float = Field(
+        default=15, gt=0, le=3600, alias="AUTOMATION_BACKOFF_BASE_SECONDS"
+    )
+    automation_backoff_max_seconds: float = Field(
+        default=600, gt=0, le=86400, alias="AUTOMATION_BACKOFF_MAX_SECONDS"
+    )
 
     model_config = SettingsConfigDict(
         env_file=_ROOT_ENV_FILE,

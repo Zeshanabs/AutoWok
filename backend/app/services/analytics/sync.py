@@ -454,6 +454,7 @@ def process_sync_job(
             resource_id=job.id,
             metadata={"category": failure.category, "code": failure.code, "status": job.status},
         )
+        _emit_finished(db, job)
         db.commit()
         return job.status
 
@@ -474,8 +475,19 @@ def process_sync_job(
         resource_id=job.id,
         metadata={"status": status, "records": records, "platform": account.platform},
     )
+    _emit_finished(db, job)
     db.commit()
     return job.status
+
+
+def _emit_finished(db: DBSession, job: AnalyticsSyncJob) -> None:
+    """Phase 10: record an automation event when a job reaches a final state."""
+    try:
+        from app.services.automation.events import emit_sync_finished
+
+        emit_sync_finished(db, job)
+    except Exception:  # noqa: BLE001 - automations must never break synchronization
+        logger.exception("Could not record automation event for analytics job %s", job.id)
 
 
 def run_due_syncs(db: DBSession, *, worker_id: str = "analytics", graph_factory: GraphFactory | None = None, limit: int = 5) -> int:

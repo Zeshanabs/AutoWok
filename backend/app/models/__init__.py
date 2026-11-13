@@ -1,4 +1,13 @@
 from app.models.audit_log import AuditLog
+from app.models.automation import (
+    Automation,
+    AutomationAction,
+    AutomationEvent,
+    AutomationExecution,
+    AutomationExecutionStep,
+    ContentTask,
+    Notification,
+)
 from app.models.ai_provider import AIProviderConfig
 from app.models.analytics import (
     AnalyticsSnapshot,
@@ -47,6 +56,13 @@ __all__ = [
     "AnalyticsSnapshot",
     "AnalyticsSyncJob",
     "AuditLog",
+    "Automation",
+    "AutomationAction",
+    "AutomationEvent",
+    "AutomationExecution",
+    "AutomationExecutionStep",
+    "ContentTask",
+    "Notification",
     "Brand",
     "BrandGoal",
     "BrandPolicy",

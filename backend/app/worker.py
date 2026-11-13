@@ -6,7 +6,8 @@ job is processed by exactly one worker at a time.
 
 Each loop iteration:
 1. Waits up to ``WORKER_POLL_INTERVAL_SECONDS`` for a Redis wake-up message.
-2. Runs registered periodic tasks (the scheduler and analytics synchronization).
+2. Runs registered periodic tasks (the scheduler, analytics synchronization,
+   and automation dispatch/execution).
 3. Processes due jobs found in the database (new, retry-due, or abandoned
    jobs whose lease expired after a crash).
 """
@@ -73,10 +74,12 @@ def main() -> None:
     settings = get_settings()
     configure_logging(settings.log_level)
     from app.services.analytics import worker_tasks as analytics_tasks
+    from app.services.automation import worker_tasks as automation_tasks
     from app.services.scheduling import worker_tasks
 
     worker_tasks.register(PERIODIC_TASKS)
     analytics_tasks.register(PERIODIC_TASKS)
+    automation_tasks.register(PERIODIC_TASKS)
 
     worker_id = default_worker_id()
     stopping = False

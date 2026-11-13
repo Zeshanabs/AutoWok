@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse
 
 from app.api.v1.routes.ai_content import router as ai_content_router
 from app.api.v1.routes.auth import router as auth_router
+from app.api.v1.routes.automations import router as automations_router
 from app.api.v1.routes.ai_providers import router as ai_providers_router
 from app.api.v1.routes.analytics import router as analytics_router
 from app.api.v1.routes.brands import router as brands_router
@@ -17,6 +18,7 @@ from app.api.v1.routes.content import router as content_router
 from app.api.v1.routes.health import router as health_router
 from app.api.v1.routes.groq_providers import router as groq_providers_router
 from app.api.v1.routes.media_assets import router as media_assets_router
+from app.api.v1.routes.notifications import router as notifications_router
 from app.api.v1.routes.publishing import router as publishing_router
 from app.api.v1.routes.research import router as research_router
 from app.api.v1.routes.scheduling import router as scheduling_router
@@ -38,7 +40,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 app = FastAPI(
     title=settings.app_name,
     version="0.1.0",
-    description="Autowok workspace, brand, research, content, social account, analytics, and AI provider API.",
+    description="Autowok workspace, brand, research, content, social account, analytics, automation, and AI provider API.",
     docs_url="/docs",
     redoc_url="/redoc",
     openapi_url="/openapi.json",
@@ -67,6 +69,8 @@ app.include_router(publishing_router, prefix=settings.api_v1_prefix)
 app.include_router(scheduling_router, prefix=settings.api_v1_prefix)
 app.include_router(social_accounts_router, prefix=settings.api_v1_prefix)
 app.include_router(analytics_router, prefix=settings.api_v1_prefix)
+app.include_router(automations_router, prefix=settings.api_v1_prefix)
+app.include_router(notifications_router, prefix=settings.api_v1_prefix)
 
 
 @app.exception_handler(RequestValidationError)

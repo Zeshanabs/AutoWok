@@ -147,6 +147,22 @@ Worker --run_analytics_syncs--> claim job --> MetaInsightsCollector --> Meta Gra
 
 Authentication failures use generic login responses. Inaccessible workspace details and membership lists return 404 to limit resource enumeration.
 
+## Automations (Phase 10)
+
+Phase 10 adds a controlled automation engine (`backend/app/services/automation/`) on top of the existing
+worker. Business code records `AutomationEvent` rows in the same transaction as the change they describe
+(outbox pattern); the worker dispatches them to enabled `Automation` rules of the same workspace and
+trigger type, evaluates a strictly validated JSON condition tree, and creates `AutomationExecution` rows
+(unique idempotency key per automation and event). A second worker task claims executions with leases and
+runs their allowlisted `AutomationAction`s in order, recording `AutomationExecutionStep` results. Actions
+only call existing services: in-app notifications (`notifications`), internal tasks (`content_tasks`),
+content assignment and labels (two new metadata columns on `content_projects`), and the Phase 9 analytics
+refresh. No action publishes, schedules, approves or edits content; there is no code execution, outbound
+HTTP or shell access. Loop protection tags events caused by executions with their origin automation and a
+chain depth; per-automation hourly, lifetime, cooldown and concurrency limits plus a workspace daily limit
+bound the load. Dry runs evaluate a configuration against sample or recorded events and roll back before
+returning a result labelled as simulated. Details: `docs/phase-10-automations.md`.
+
 ## Environment and operations
 
 The root `.env.example` documents:
@@ -163,6 +179,7 @@ The root `.env.example` documents:
 - `TOKEN_ENCRYPTION_KEY` and optional `TOKEN_ENCRYPTION_KEY_PREVIOUS` for Meta credentials.
 - Phase 7: `STORAGE_PROVIDER`, `MEDIA_MAX_IMAGE_BYTES`, `MEDIA_MAX_VIDEO_BYTES`, `MEDIA_URL_SIGNING_SECRET`, `MEDIA_SIGNED_URL_TTL_SECONDS`, `PUBLIC_MEDIA_BASE_URL`, `PUBLISHING_MAX_ATTEMPTS`, `PUBLISHING_BACKOFF_BASE_SECONDS`, `PUBLISHING_BACKOFF_MAX_SECONDS`, `PUBLISHING_LEASE_SECONDS`, `WORKER_POLL_INTERVAL_SECONDS`.
 - Phase 8: `DEFAULT_TIMEZONE`, `SCHEDULE_MIN_LEAD_SECONDS`, `SCHEDULE_MAX_HORIZON_DAYS`, `SCHEDULE_MAX_LATENESS_SECONDS`.
+- Phase 10: `AUTOMATION_ENABLED`, `AUTOMATION_MAX_PER_WORKSPACE`, `AUTOMATION_MAX_ACTIONS`, `AUTOMATION_MAX_CONDITIONS`, `AUTOMATION_MAX_CONDITION_DEPTH`, `AUTOMATION_MAX_EXECUTIONS_PER_HOUR`, `AUTOMATION_WORKSPACE_MAX_EXECUTIONS_PER_DAY`, `AUTOMATION_MAX_CHAIN_DEPTH`, `AUTOMATION_MAX_RETRIES`, `AUTOMATION_EXECUTION_TIMEOUT_SECONDS`, `AUTOMATION_LEASE_SECONDS`, `AUTOMATION_MAX_CONCURRENT_EXECUTIONS`, `AUTOMATION_EVENT_MAX_ATTEMPTS`, `AUTOMATION_BACKOFF_BASE_SECONDS`, `AUTOMATION_BACKOFF_MAX_SECONDS`.
 - Phase 9: `ANALYTICS_ENABLED`, `ANALYTICS_SYNC_INTERVAL_HOURS`, `ANALYTICS_INITIAL_LOOKBACK_DAYS`, `ANALYTICS_INCREMENTAL_LOOKBACK_DAYS`, `ANALYTICS_POST_LOOKBACK_DAYS`, `ANALYTICS_MAX_POSTS_PER_SYNC`, `ANALYTICS_SYNC_MAX_ATTEMPTS`, `ANALYTICS_SYNC_LEASE_SECONDS`, `ANALYTICS_MANUAL_REFRESH_COOLDOWN_MINUTES`, `ANALYTICS_MANUAL_REFRESH_LIMIT_PER_HOUR`.
 
 Do not commit `.env` or use secrets in public frontend variables. Direct backend startup requires `alembic upgrade head`; the Docker backend applies migrations before starting. Migrations are additive and do not drop Phase 0 data. Run `alembic upgrade head` with the deployment PostgreSQL connection before rollout and verify a backup/restore procedure separately.
@@ -175,4 +192,4 @@ Do not commit `.env` or use secrets in public frontend variables. Direct backend
 
 ## Remaining work and trade-offs
 
-Email verification delivery, password recovery, account invitations, MFA, workspace deletion, and ownership transfer are not implemented. Publishing (Phase 7), scheduling (Phase 8) and analytics collection (Phase 9) are implemented but only verified against a mocked Meta API. Phase 3 tests use mocks; real vendor credentials, Meta App Review, and live API calls remain unverified. Apply and verify PostgreSQL migrations in the deployment environment. Session activity metadata stores a bounded user-agent string but exposes only a coarse device label. Authentication rate-limit counters are ephemeral and Redis-backed; a Redis outage blocks authentication rather than disabling protection. Production HTTPS termination, proxy trust, monitoring, backups, and operational key/secret rotation must be configured by the deployment environment.
+Email verification delivery, password recovery, account invitations, MFA, workspace deletion, and ownership transfer are not implemented. Publishing (Phase 7), scheduling (Phase 8) and analytics collection (Phase 9) are implemented but only verified against a mocked Meta API. Automations (Phase 10) have no email action because no email service exists, and their PostgreSQL migration was compiled offline but not applied to a live PostgreSQL instance in the development environment. Phase 3 tests use mocks; real vendor credentials, Meta App Review, and live API calls remain unverified. Apply and verify PostgreSQL migrations in the deployment environment. Session activity metadata stores a bounded user-agent string but exposes only a coarse device label. Authentication rate-limit counters are ephemeral and Redis-backed; a Redis outage blocks authentication rather than disabling protection. Production HTTPS termination, proxy trust, monitoring, backups, and operational key/secret rotation must be configured by the deployment environment.
