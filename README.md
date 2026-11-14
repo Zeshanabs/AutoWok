@@ -8,7 +8,7 @@ The long-term product aims to help teams establish a brand, research topics with
 
 ## Current phase
 
-Phases 1–6 provide authentication and workspaces, brand profiles and AI configuration, Meta/Groq integration foundations, research with citations, content projects with versioning and approvals, and Groq-based content intelligence. **Phase 7** adds the media library, platform previews, and controlled immediate publishing to Facebook Pages and Instagram Professional accounts. **Phase 8** adds the content calendar, timezone-aware scheduling, and the automated publishing queue. **Phase 9** adds Facebook Page and Instagram analytics: background insight collection, account and post performance, platform comparison, content-performance rankings, and CSV/PDF reports. **Phase 10** adds controlled, rule-based workflow automations (trigger → conditions → allowlisted actions) with dry-run testing, execution history, in-app notifications and internal tasks. Automated tests use mocked or local dependencies. Live Meta publishing and insight retrieval, Meta App Review, and PostgreSQL/Docker runs of Phases 7–10 remain **unverified** in this environment.
+Phases 1–6 provide authentication and workspaces, brand profiles and AI configuration, Meta/Groq integration foundations, research with citations, content projects with versioning and approvals, and Groq-based content intelligence. **Phase 7** adds the media library, platform previews, and controlled immediate publishing to Facebook Pages and Instagram Professional accounts. **Phase 8** adds the content calendar, timezone-aware scheduling, and the automated publishing queue. **Phase 9** adds Facebook Page and Instagram analytics: background insight collection, account and post performance, platform comparison, content-performance rankings, and CSV/PDF reports. **Phase 10** adds controlled, rule-based workflow automations (trigger → conditions → allowlisted actions) with dry-run testing, execution history, in-app notifications and internal tasks. **Phase 11** adds a controlled multi-agent AI system: eight specialized agents run in four predefined workflows under a central orchestrator, and people review every result. Automated tests use mocked or local dependencies. Live Meta publishing and insight retrieval, Meta App Review, live Groq inference for agents, and PostgreSQL/Docker runs of Phases 7–11 remain **unverified** in this environment.
 
 ## Technology stack
 
@@ -60,6 +60,16 @@ This implementation adds modular AI content intelligence utilities that can be u
 - **Engine**: events are persisted in the same transaction as the business change (outbox), dispatched and executed by `python -m app.worker` with atomic claims, leases, bounded retries with backoff, idempotency keys, self-trigger and chain-depth loop protection, per-automation hourly/lifetime/cooldown/concurrency limits and a workspace daily limit. Automations never approve, publish, schedule or edit content; there is no code execution or outbound HTTP.
 - **Notifications and tasks** (`/dashboard/notifications`): personal in-app notifications with read state and workspace tasks (follow-ups, reminders, incidents) created by automations. Email is not implemented (no email service exists yet).
 - Details, limits and the trigger/condition/action reference: [docs/phase-10-automations.md](docs/phase-10-automations.md).
+
+## Phase 11: Multi-agent AI intelligence and orchestration
+
+- **AI workspace** (`/dashboard/ai-agents`, `/workflows`, `/workflows/[workflowId]`, `/history`, `/settings`): members choose a predefined workflow, describe the task, select a brand, research and (for repurposing) approved content, review the planned execution and start it. The execution view shows each agent's status, attempts, warnings, evidence and structured output, then the final deliverable.
+- **Agents**: Research, Marketing Strategist, Content Planner, Content Writer, Brand Guardian, Fact-Checker, Content Quality and Analytics Strategist. They are registered in code with input/output schemas, a tool allowlist, model settings, limits and a version. Owners and Admins can switch an agent off per workspace.
+- **Workflows**: Complete content research; Create high-quality social content (with a bounded revision loop); Content repurposing; Performance analysis.
+- **Orchestrator**: runs in `python -m app.worker`. Workflow state is stored in PostgreSQL with leases, so runs survive worker restarts. Retries, timeouts, agent calls, duration and revisions are all bounded; Groq rate limits reschedule a step instead of retrying at once; workflows can be cancelled.
+- **Validation**: model output is parsed as JSON and validated against a schema. Citations must point at stored research sources and metric values must exist in the measured analytics; anything else is removed or labelled as an assumption.
+- **Human control**: agents cannot approve, schedule or publish. A person accepts a draft into the content studio, where it starts as `draft` and follows the existing approval workflow; they can also request a bounded revision or reject the output.
+- **Providers**: Groq is the only LLM provider (existing `GROQ_*` settings, optional `AGENT_GROQ_MODEL`). External research uses the Phase 4 research engine and its search provider. Verified with mocked Groq responses only; see [docs/phase-11-multi-agent.md](docs/phase-11-multi-agent.md) for the architecture, schemas, limits and known limitations.
 
 ## Folder structure
 
@@ -299,6 +309,9 @@ The API is versioned under `/api/v1`:
 | GET, POST | `/workspaces/{workspace_id}/automation-executions[/{execution_id}, /{execution_id}/retry]` | Phase 10: execution history and retry |
 | GET, POST | `/workspaces/{workspace_id}/notifications[/{id}/read, /read-all]`, `/workspaces/{workspace_id}/tasks[/{id}/complete, /{id}/reopen]` | Phase 10: in-app notifications and internal tasks |
 | POST | `/content/projects/{project_id}/assign` | Phase 10: assign a content post to a workspace member |
+| GET, PATCH | `/workspaces/{workspace_id}/agents[/{agent_key}]` | Phase 11: agent registry; enable or disable an agent (Owner/Admin) |
+| GET, POST | `/workspaces/{workspace_id}/agent-workflows[/catalog, /plan, /stats]` | Phase 11: workflow catalogue, planned execution preview, start, history, usage |
+| GET, POST | `/workspaces/{workspace_id}/agent-workflows/{workflow_id}[/progress, /output, /executions/{execution_id}, /cancel, /accept, /revise, /reject]` | Phase 11: monitor one workflow, read agent outputs, cancel, and review the result |
 | GET, POST | `/content/projects` | List or create workspace content projects |
 | GET, PATCH, DELETE | `/content/projects/{project_id}` | Read, update, or delete a content project |
 | GET, POST | `/content/projects/{project_id}/drafts` | List or create a platform draft |
@@ -377,7 +390,7 @@ alembic upgrade head
 python -m app.worker        # or: make worker
 ```
 
-With Docker Compose, the `worker` service starts automatically. It needs the same `DATABASE_URL`, `REDIS_URL`, `LOCAL_STORAGE_PATH`, and secrets as the backend. To publish posts with media, set `PUBLIC_MEDIA_BASE_URL` (a public HTTPS address that Meta can reach, for example a tunnel) and `MEDIA_URL_SIGNING_SECRET`. The Phase 7/8/9/10 variables are documented in `.env.example`; analytics settings are described in [docs/phase-9-analytics.md](docs/phase-9-analytics.md) and automation limits in [docs/phase-10-automations.md](docs/phase-10-automations.md).
+With Docker Compose, the `worker` service starts automatically. It needs the same `DATABASE_URL`, `REDIS_URL`, `LOCAL_STORAGE_PATH`, and secrets as the backend. To publish posts with media, set `PUBLIC_MEDIA_BASE_URL` (a public HTTPS address that Meta can reach, for example a tunnel) and `MEDIA_URL_SIGNING_SECRET`. The Phase 7–11 variables are documented in `.env.example`; analytics settings are described in [docs/phase-9-analytics.md](docs/phase-9-analytics.md), automation limits in [docs/phase-10-automations.md](docs/phase-10-automations.md) and AI agent limits in [docs/phase-11-multi-agent.md](docs/phase-11-multi-agent.md). AI agent workflows also run in the worker; without it they stay queued.
 
 ## Troubleshooting
 
@@ -411,9 +424,8 @@ Do not connect or push a remote without explicit permission.
 - Phase 8: Calendar, scheduling, retries, and queue recovery (implemented; live Meta publishing not verified).
 - Phase 9: Analytics, performance tracking, and reporting for Facebook Pages and Instagram (implemented; live Meta insights not verified).
 - Phase 10: Controlled workflow automations and rule-based execution (implemented; PostgreSQL migration not applied live in this environment).
-- Phase 10: Additional social platforms according to customer demand, and AI usage tracking.
-- Phase 11: Controlled workflow automations with approval gates and run history.
-- Phase 12: Multi-agent intelligence and advanced research capabilities.
+- Phase 11: Multi-agent AI intelligence and orchestration (implemented; verified with mocked Groq responses, live Groq and PostgreSQL migration not verified in this environment).
+- Later phases (not started): additional social platforms according to customer demand, and further AI capabilities.
 - Phase 13: Optimization, accessibility, monitoring, backups, and advanced features.
 
 ## Later-phase exclusions

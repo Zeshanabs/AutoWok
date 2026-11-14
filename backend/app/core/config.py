@@ -125,6 +125,26 @@ class Settings(BaseSettings):
     automation_backoff_max_seconds: float = Field(
         default=600, gt=0, le=86400, alias="AUTOMATION_BACKOFF_MAX_SECONDS"
     )
+    # Phase 11: multi-agent AI workflows (Groq inference only)
+    agents_enabled: bool = Field(default=True, alias="AGENTS_ENABLED")
+    # Optional Groq model for agents. Empty = the workspace model or GROQ_DEFAULT_MODEL.
+    agent_groq_model: str = Field(default="", alias="AGENT_GROQ_MODEL")
+    agent_max_calls_per_workflow: int = Field(default=24, ge=1, le=200, alias="AGENT_MAX_CALLS_PER_WORKFLOW")
+    agent_max_workflow_seconds: int = Field(default=900, ge=30, le=7200, alias="AGENT_MAX_WORKFLOW_SECONDS")
+    agent_step_timeout_seconds: int = Field(default=90, ge=5, le=600, alias="AGENT_STEP_TIMEOUT_SECONDS")
+    agent_max_step_attempts: int = Field(default=3, ge=1, le=6, alias="AGENT_MAX_STEP_ATTEMPTS")
+    agent_max_auto_revisions: int = Field(default=1, ge=0, le=3, alias="AGENT_MAX_AUTO_REVISIONS")
+    agent_max_revisions: int = Field(default=3, ge=0, le=10, alias="AGENT_MAX_REVISIONS")
+    # 1 = independent agents still run one after another (kindest to Groq rate limits).
+    agent_max_parallel_calls: int = Field(default=1, ge=1, le=4, alias="AGENT_MAX_PARALLEL_CALLS")
+    agent_lease_seconds: int = Field(default=300, ge=30, le=7200, alias="AGENT_LEASE_SECONDS")
+    agent_max_active_workflows: int = Field(default=3, ge=1, le=50, alias="AGENT_MAX_ACTIVE_WORKFLOWS")
+    agent_max_workflows_per_hour: int = Field(default=20, ge=1, le=1000, alias="AGENT_MAX_WORKFLOWS_PER_HOUR")
+    agent_backoff_base_seconds: float = Field(default=20, gt=0, le=3600, alias="AGENT_BACKOFF_BASE_SECONDS")
+    agent_backoff_max_seconds: float = Field(default=300, gt=0, le=3600, alias="AGENT_BACKOFF_MAX_SECONDS")
+    agent_quality_revision_threshold: float = Field(
+        default=6.0, ge=1, le=10, alias="AGENT_QUALITY_REVISION_THRESHOLD"
+    )
 
     model_config = SettingsConfigDict(
         env_file=_ROOT_ENV_FILE,

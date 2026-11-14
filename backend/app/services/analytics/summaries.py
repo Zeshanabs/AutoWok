@@ -52,6 +52,10 @@ def _compact_performance(performance: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+# Public name: the Phase 11 Analytics Strategist agent reuses the same compact, id-free view.
+compact_performance = _compact_performance
+
+
 def build_prompt(performance: dict[str, Any]) -> str:
     data = _compact_performance(performance)
     return (

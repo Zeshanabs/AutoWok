@@ -92,6 +92,9 @@ export default function DashboardPage() {
           <Link href="/dashboard/automations" className="font-semibold text-indigo-700">
             Automations
           </Link>
+          <Link href="/dashboard/ai-agents" className="font-semibold text-indigo-700">
+            AI agents
+          </Link>
           <Link href="/dashboard/notifications" className="font-semibold text-indigo-700">
             Notifications
           </Link>

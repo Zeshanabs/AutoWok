@@ -1,3 +1,10 @@
+from app.models.agent import (
+    AgentExecution,
+    AgentMessage,
+    AgentSetting,
+    AgentWorkflow,
+    AgentWorkflowStep,
+)
 from app.models.audit_log import AuditLog
 from app.models.automation import (
     Automation,
@@ -52,6 +59,11 @@ from app.models.user import User
 from app.models.workspace import Workspace, WorkspaceMembership
 
 __all__ = [
+    "AgentExecution",
+    "AgentMessage",
+    "AgentSetting",
+    "AgentWorkflow",
+    "AgentWorkflowStep",
     "AIProviderConfig",
     "AnalyticsSnapshot",
     "AnalyticsSyncJob",

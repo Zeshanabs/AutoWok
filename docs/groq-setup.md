@@ -31,4 +31,16 @@ GROQ_ENABLED=true
 
 `GROQ_API_BASE_URL` is restricted to Groq's official HTTPS API hostname. The backend may make bounded retries for transient model-list GETs only; it does not retry HTTP 429 responses or completion POSTs.
 
+## AI agent workflows (Phase 11)
+
+The multi-agent workflows use the same Groq configuration: the workspace provider if one is saved, otherwise `GROQ_API_KEY` and `GROQ_DEFAULT_MODEL`. Nothing else is required.
+
+- `AGENT_GROQ_MODEL` (optional) sets a different model for agents only. Leave it empty to use the workspace model or `GROQ_DEFAULT_MODEL`. No model id is built into the code; pick one from the live list in **Settings → AI** and test it.
+- Agents ask for JSON and every answer is validated, so choose a model that follows JSON instructions reliably.
+- A workflow makes one Groq request per agent step (3 to 5 per run, more with a revision). Requests are sequential by default (`AGENT_MAX_PARALLEL_CALLS=1`).
+- When Groq returns HTTP 429, the single request is still not retried in place. The orchestrator puts the workflow back in the queue and tries that step again after Groq's `retry-after` time, at most `AGENT_MAX_STEP_ATTEMPTS` times. To stay within free-tier limits, keep `AGENT_MAX_PARALLEL_CALLS=1` and lower `AGENT_MAX_WORKFLOWS_PER_HOUR` if needed.
+- Groq provides inference only. Web research for the Research Agent goes through the research engine's search provider (`RESEARCH_SEARCH_*`).
+
+See [Phase 11 multi-agent workflows](./phase-11-multi-agent.md).
+
 See [Phase 3 integrations](./phase-3-integrations.md) for endpoint behavior and [token storage](./security/token-storage.md) for key handling and rotation.

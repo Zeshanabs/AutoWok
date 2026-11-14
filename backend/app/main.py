@@ -8,6 +8,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from app.api.v1.routes.agent_workflows import router as agent_workflows_router
 from app.api.v1.routes.ai_content import router as ai_content_router
 from app.api.v1.routes.auth import router as auth_router
 from app.api.v1.routes.automations import router as automations_router
@@ -40,7 +41,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 app = FastAPI(
     title=settings.app_name,
     version="0.1.0",
-    description="Autowok workspace, brand, research, content, social account, analytics, automation, and AI provider API.",
+    description="Autowok workspace, brand, research, content, social account, analytics, automation, AI agent, and AI provider API.",
     docs_url="/docs",
     redoc_url="/redoc",
     openapi_url="/openapi.json",
@@ -71,6 +72,7 @@ app.include_router(social_accounts_router, prefix=settings.api_v1_prefix)
 app.include_router(analytics_router, prefix=settings.api_v1_prefix)
 app.include_router(automations_router, prefix=settings.api_v1_prefix)
 app.include_router(notifications_router, prefix=settings.api_v1_prefix)
+app.include_router(agent_workflows_router, prefix=settings.api_v1_prefix)
 
 
 @app.exception_handler(RequestValidationError)

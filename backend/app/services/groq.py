@@ -90,6 +90,15 @@ class GroqService:
         self._sleep = sleep
         self._jitter = jitter
         self._last_usage: GroqUsage | None = None
+        self._preloaded: GroqCredential | None = None
+
+    def preload_credential(self) -> None:
+        """Resolve the credential now so later completions do not use the database.
+
+        Phase 11 runs agent completions on worker threads; a SQLAlchemy session
+        must not be shared between threads, so the lookup happens up front.
+        """
+        self._preloaded = self._credential()
 
     def configuration_status(self) -> dict[str, Any]:
         provider = self._workspace_config()
@@ -121,6 +130,8 @@ class GroqService:
         )
 
     def _credential(self, *, require_model: bool = True) -> GroqCredential:
+        if self._preloaded is not None:
+            return self._preloaded
         if not self._settings.groq_enabled:
             raise GroqNotConfiguredError("Groq is disabled by the server configuration.")
         provider = self._workspace_config()

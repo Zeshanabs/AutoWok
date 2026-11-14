@@ -16,6 +16,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   automation_failure: "Automation failed",
   assignment: "Assignment",
   task: "Task",
+  agent_workflow: "AI workflow",
 };
 
 function resourceLink(notification: Notification): string | null {
@@ -24,6 +25,7 @@ function resourceLink(notification: Notification): string | null {
   if (notification.resource_type === "content_publication") return "/dashboard/publishing";
   if (notification.resource_type === "scheduled_post" && notification.resource_id) return `/dashboard/calendar/${notification.resource_id}`;
   if (notification.resource_type === "analytics_sync_job") return "/dashboard/analytics";
+  if (notification.resource_type === "agent_workflow" && notification.resource_id) return `/dashboard/ai-agents/workflows/${notification.resource_id}`;
   return null;
 }
 

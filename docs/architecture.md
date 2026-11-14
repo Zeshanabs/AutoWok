@@ -163,6 +163,51 @@ chain depth; per-automation hourly, lifetime, cooldown and concurrency limits pl
 bound the load. Dry runs evaluate a configuration against sample or recorded events and roll back before
 returning a result labelled as simulated. Details: `docs/phase-10-automations.md`.
 
+## Multi-agent AI workflows (Phase 11)
+
+Phase 11 adds `backend/app/services/agents/`: an explicit agent registry, an allowlist of workspace-scoped
+tools, eight specialized agents, four predefined workflows and an orchestrator that runs in the existing
+worker.
+
+```
+User ─▶ API (auth, role, validation, limits) ─▶ agent_workflows + agent_workflow_steps
+                                                        │ worker: claim with lease
+                                                        ▼
+                                                  Orchestrator
+                      ┌─────────────────────────────────┼──────────────────────────────┐
+                      ▼                                 ▼                              ▼
+                context steps                    Specialized agents               compile step
+              (read-only tools)        prepare ─▶ Groq (GroqService) ─▶ finalize   + review gate
+                      │                          │                                     │
+                      └──────────▶ Existing services ◀──────────┘                      ▼
+                         brand context · research engine and sources          Validated results
+                         content studio · analytics queries                          │
+                                                                                     ▼
+                                                               Human review: accept (draft) · revise · reject
+```
+
+A workflow is a fixed list of steps with dependencies; requests select a workflow by key and cannot define
+steps, prompts, tools or agents. Each agent has two halves: `prepare` reads through its `ToolBox` and builds
+one prompt, and `finalize` checks the schema-validated answer against the records the agent was given
+(citations against `research_sources`, metric values against the measured analytics, prohibited phrases by
+rule). Results are stored as structured envelopes in `agent_executions`; the next agent's input is built
+from those validated results, never from free text.
+
+Workflow state is in PostgreSQL (`agent_workflows`, `agent_workflow_steps`, `agent_executions`,
+`agent_messages`, `agent_settings`). The worker claims a workflow with a conditional UPDATE and a lease,
+renews it after each step, and another worker continues from the persisted steps if the lease expires.
+Attempts per step, agent calls and duration per workflow, revision rounds, concurrent workflows and hourly
+starts are all limited; a Groq rate limit returns the workflow to `pending` with a retry time instead of
+retrying immediately. Independent reviewers form a parallel group, but run sequentially unless
+`AGENT_MAX_PARALLEL_CALLS` is raised.
+
+Agents use Groq for inference only, through the existing `GroqService` and its configuration; no other
+provider is called. External research goes through the Phase 4 research engine and its search provider.
+There is no tool for publishing, scheduling, approving, deleting, credentials, HTTP, shell or SQL. The only
+path into the content studio is the human accept action, which creates a `draft` content project through
+`ContentStudioService`; Phase 5 approval and Phase 7/8 publishing safeguards are unchanged. Details:
+`docs/phase-11-multi-agent.md`.
+
 ## Environment and operations
 
 The root `.env.example` documents:
@@ -180,6 +225,7 @@ The root `.env.example` documents:
 - Phase 7: `STORAGE_PROVIDER`, `MEDIA_MAX_IMAGE_BYTES`, `MEDIA_MAX_VIDEO_BYTES`, `MEDIA_URL_SIGNING_SECRET`, `MEDIA_SIGNED_URL_TTL_SECONDS`, `PUBLIC_MEDIA_BASE_URL`, `PUBLISHING_MAX_ATTEMPTS`, `PUBLISHING_BACKOFF_BASE_SECONDS`, `PUBLISHING_BACKOFF_MAX_SECONDS`, `PUBLISHING_LEASE_SECONDS`, `WORKER_POLL_INTERVAL_SECONDS`.
 - Phase 8: `DEFAULT_TIMEZONE`, `SCHEDULE_MIN_LEAD_SECONDS`, `SCHEDULE_MAX_HORIZON_DAYS`, `SCHEDULE_MAX_LATENESS_SECONDS`.
 - Phase 10: `AUTOMATION_ENABLED`, `AUTOMATION_MAX_PER_WORKSPACE`, `AUTOMATION_MAX_ACTIONS`, `AUTOMATION_MAX_CONDITIONS`, `AUTOMATION_MAX_CONDITION_DEPTH`, `AUTOMATION_MAX_EXECUTIONS_PER_HOUR`, `AUTOMATION_WORKSPACE_MAX_EXECUTIONS_PER_DAY`, `AUTOMATION_MAX_CHAIN_DEPTH`, `AUTOMATION_MAX_RETRIES`, `AUTOMATION_EXECUTION_TIMEOUT_SECONDS`, `AUTOMATION_LEASE_SECONDS`, `AUTOMATION_MAX_CONCURRENT_EXECUTIONS`, `AUTOMATION_EVENT_MAX_ATTEMPTS`, `AUTOMATION_BACKOFF_BASE_SECONDS`, `AUTOMATION_BACKOFF_MAX_SECONDS`.
+- Phase 11: `AGENTS_ENABLED`, `AGENT_GROQ_MODEL`, `AGENT_MAX_CALLS_PER_WORKFLOW`, `AGENT_MAX_WORKFLOW_SECONDS`, `AGENT_STEP_TIMEOUT_SECONDS`, `AGENT_MAX_STEP_ATTEMPTS`, `AGENT_MAX_AUTO_REVISIONS`, `AGENT_MAX_REVISIONS`, `AGENT_MAX_PARALLEL_CALLS`, `AGENT_LEASE_SECONDS`, `AGENT_MAX_ACTIVE_WORKFLOWS`, `AGENT_MAX_WORKFLOWS_PER_HOUR`, `AGENT_BACKOFF_BASE_SECONDS`, `AGENT_BACKOFF_MAX_SECONDS`, `AGENT_QUALITY_REVISION_THRESHOLD`.
 - Phase 9: `ANALYTICS_ENABLED`, `ANALYTICS_SYNC_INTERVAL_HOURS`, `ANALYTICS_INITIAL_LOOKBACK_DAYS`, `ANALYTICS_INCREMENTAL_LOOKBACK_DAYS`, `ANALYTICS_POST_LOOKBACK_DAYS`, `ANALYTICS_MAX_POSTS_PER_SYNC`, `ANALYTICS_SYNC_MAX_ATTEMPTS`, `ANALYTICS_SYNC_LEASE_SECONDS`, `ANALYTICS_MANUAL_REFRESH_COOLDOWN_MINUTES`, `ANALYTICS_MANUAL_REFRESH_LIMIT_PER_HOUR`.
 
 Do not commit `.env` or use secrets in public frontend variables. Direct backend startup requires `alembic upgrade head`; the Docker backend applies migrations before starting. Migrations are additive and do not drop Phase 0 data. Run `alembic upgrade head` with the deployment PostgreSQL connection before rollout and verify a backup/restore procedure separately.
@@ -192,4 +238,4 @@ Do not commit `.env` or use secrets in public frontend variables. Direct backend
 
 ## Remaining work and trade-offs
 
-Email verification delivery, password recovery, account invitations, MFA, workspace deletion, and ownership transfer are not implemented. Publishing (Phase 7), scheduling (Phase 8) and analytics collection (Phase 9) are implemented but only verified against a mocked Meta API. Automations (Phase 10) have no email action because no email service exists, and their PostgreSQL migration was compiled offline but not applied to a live PostgreSQL instance in the development environment. Phase 3 tests use mocks; real vendor credentials, Meta App Review, and live API calls remain unverified. Apply and verify PostgreSQL migrations in the deployment environment. Session activity metadata stores a bounded user-agent string but exposes only a coarse device label. Authentication rate-limit counters are ephemeral and Redis-backed; a Redis outage blocks authentication rather than disabling protection. Production HTTPS termination, proxy trust, monitoring, backups, and operational key/secret rotation must be configured by the deployment environment.
+Email verification delivery, password recovery, account invitations, MFA, workspace deletion, and ownership transfer are not implemented. Publishing (Phase 7), scheduling (Phase 8) and analytics collection (Phase 9) are implemented but only verified against a mocked Meta API. Automations (Phase 10) have no email action because no email service exists, and their PostgreSQL migration was compiled offline but not applied to a live PostgreSQL instance in the development environment. Multi-agent workflows (Phase 11) are verified with mocked Groq responses only; live Groq inference is untested, the Phase 4 search provider still returns no live results (so new research has no sources and findings are labelled as assumptions), and the Phase 11 migration was checked on SQLite, not PostgreSQL. Phase 3 tests use mocks; real vendor credentials, Meta App Review, and live API calls remain unverified. Apply and verify PostgreSQL migrations in the deployment environment. Session activity metadata stores a bounded user-agent string but exposes only a coarse device label. Authentication rate-limit counters are ephemeral and Redis-backed; a Redis outage blocks authentication rather than disabling protection. Production HTTPS termination, proxy trust, monitoring, backups, and operational key/secret rotation must be configured by the deployment environment.
