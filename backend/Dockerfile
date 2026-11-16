@@ -3,13 +3,13 @@
 #   target "runtime" (default) - production: no build tools, no tests, non-root.
 #   target "dev"               - local development with docker-compose.yml (source is bind-mounted).
 
-FROM python:3.12-slim AS builder
+FROM python:3.15-slim AS builder
 ENV PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1
 WORKDIR /build
 COPY requirements.txt constraints.txt ./
 RUN python -m venv /opt/venv && /opt/venv/bin/pip install -r requirements.txt -c constraints.txt
 
-FROM python:3.12-slim AS dev
+FROM python:3.15-slim AS dev
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1
 WORKDIR /app
 COPY requirements.txt requirements-dev.txt constraints.txt ./
@@ -17,7 +17,7 @@ RUN pip install -r requirements-dev.txt -c constraints.txt
 COPY . ./
 CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"]
 
-FROM python:3.12-slim AS runtime
+FROM python:3.15-slim AS runtime
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PATH=/opt/venv/bin:$PATH \
