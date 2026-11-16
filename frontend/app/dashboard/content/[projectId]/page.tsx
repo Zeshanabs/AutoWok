@@ -229,7 +229,7 @@ export default function ContentProjectPage() {
         {notice && <p role="status" className="mb-4 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800">{notice}</p>}
 
         {loading ? (
-          <p>Loading content project…</p>
+          <p role="status">Loading content project…</p>
         ) : project ? (
           <div className="space-y-6">
             <section className="rounded-2xl border border-slate-200 bg-white p-5">

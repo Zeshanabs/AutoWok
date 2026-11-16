@@ -75,7 +75,7 @@ export default function ResearchDashboardPage() {
 
             <section className="mt-7 space-y-3">
               {loading ? (
-                <p>Loading research projects…</p>
+                <p role="status">Loading research projects…</p>
               ) : projects.length === 0 ? (
                 <p className="rounded-xl border border-dashed border-slate-300 p-6 text-sm text-slate-600">
                   No research projects yet for this workspace.

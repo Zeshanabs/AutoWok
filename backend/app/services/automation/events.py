@@ -88,8 +88,11 @@ def emit(
             chain_depth=(origin.chain_depth + 1) if origin is not None else 0,
             occurred_at=occurred_at or utc_now(),
         )
-        db.add(event)
-        db.flush()
+        # Savepoint: if two writers race on the same dedupe key, only this insert
+        # is rolled back and the caller's transaction stays usable.
+        with db.begin_nested():
+            db.add(event)
+            db.flush()
         return event
     except Exception:  # noqa: BLE001 - automation must never break the business operation
         logger.exception("Could not record automation event %s", event_type)

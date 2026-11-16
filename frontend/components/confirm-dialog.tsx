@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useRef, type ReactNode } from "react";
+import { useId, useRef, type ReactNode } from "react";
+
+import { useModal } from "@/components/use-modal";
 
 type ConfirmDialogProps = {
   open: boolean;
@@ -28,26 +30,21 @@ export function ConfirmDialog({
   onCancel,
 }: ConfirmDialogProps) {
   const cancelRef = useRef<HTMLButtonElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    cancelRef.current?.focus();
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !busy) onCancel();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, busy, onCancel]);
+  const titleId = useId();
+  const dialogRef = useModal<HTMLDivElement>(open, onCancel, { initialFocus: cancelRef, canClose: !busy });
 
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-4 sm:items-center">
       <div
+        ref={dialogRef}
+        tabIndex={-1}
         role="dialog"
         aria-modal="true"
-        aria-labelledby="confirm-dialog-title"
+        aria-labelledby={titleId}
         className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl"
       >
-        <h2 id="confirm-dialog-title" className="text-lg font-semibold">
+        <h2 id={titleId} className="text-lg font-semibold">
           {title}
         </h2>
         <div className="mt-3 space-y-2 text-sm text-slate-600">{children}</div>

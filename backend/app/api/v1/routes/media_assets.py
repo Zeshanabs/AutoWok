@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import hashlib
+import threading
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
+from fastapi.responses import FileResponse
 from sqlalchemy import or_
 from sqlalchemy.orm import Session as DBSession
 
@@ -12,6 +14,7 @@ from app.api.v1.dependencies.auth import authorize_workspace, get_current_user
 from app.api.v1.routes.content import _ensure_project_editable, _mark_project_revised
 from app.core.config import get_settings
 from app.db.session import get_db
+from app.services.rate_limit import enforce_user_rate_limit
 from app.models import Brand, ContentDraft, MediaAsset, SocialAccount, User
 from app.schemas.media_assets import (
     DraftMediaAttachment,
@@ -29,6 +32,7 @@ from app.services.publishing.eligibility import evaluate_eligibility
 from app.services.storage import StorageError, storage_service
 
 router = APIRouter(tags=["media assets"])
+settings = get_settings()
 _CHUNK = 1024 * 1024
 
 
@@ -72,16 +76,25 @@ def _get_asset(db: DBSession, user: User, media_id: UUID, *, allow_archived: boo
 
 
 def _stream_file(asset: MediaAsset, key: str, media_type: str, *, download_name: str | None = None) -> Response:
-    try:
-        data = storage_service.read_file(key)
-    except StorageError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Stored media file not found.") from exc
     headers = {"Cache-Control": "private, max-age=300", "X-Content-Type-Options": "nosniff"}
     if download_name:
         safe = sanitize_filename(download_name).replace('"', "")
         headers["Content-Disposition"] = f'attachment; filename="{safe}"'
     else:
         headers["Content-Disposition"] = "inline"
+    try:
+        path = storage_service.local_path(key)
+    except StorageError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Stored media file not found.") from exc
+    if path is not None:
+        if not path.is_file():
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Stored media file not found.")
+        # Streamed in chunks: a 100 MB video no longer occupies 100 MB of memory per request.
+        return FileResponse(path, media_type=media_type, headers=headers)
+    try:
+        data = storage_service.read_file(key)
+    except StorageError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Stored media file not found.") from exc
     return Response(content=data, media_type=media_type, headers=headers)
 
 
@@ -123,8 +136,12 @@ def get_media_asset(
     return _media_asset_read(_get_asset(db, current_user, media_id, allow_archived=True))
 
 
+_IMAGE_EXTENSIONS = {"jpg", "jpeg", "png", "gif", "webp"}
+_upload_slots = threading.BoundedSemaphore(settings.upload_max_concurrent)
+
+
 @router.post("/media-assets/upload", response_model=MediaAssetRead, status_code=status.HTTP_201_CREATED)
-async def upload_media_asset(
+def upload_media_asset(
     workspace_id: UUID = Form(...),
     brand_id: UUID | None = Form(default=None),
     title: str | None = Form(default=None, max_length=200),
@@ -132,27 +149,48 @@ async def upload_media_asset(
     current_user: User = Depends(get_current_user),
     db: DBSession = Depends(get_db),
 ) -> MediaAssetRead:
+    # A plain (non-async) route: validation, hashing, image re-encoding and file
+    # writes run in the worker threadpool and never block the event loop.
     authorize_workspace(workspace_id, current_user, db)
+    enforce_user_rate_limit(
+        current_user.id, action="media-upload", limit=settings.rate_limit_upload_per_hour, category="Upload"
+    )
     if brand_id is not None:
         brand = db.query(Brand).filter(Brand.id == brand_id, Brand.workspace_id == workspace_id).first()
         if brand is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Brand not found in this workspace.")
 
-    limit = max_upload_bytes()
-    chunks: list[bytes] = []
-    total = 0
-    while True:
-        chunk = await file.read(_CHUNK)
-        if not chunk:
-            break
-        total += len(chunk)
-        if total > limit:
-            raise HTTPException(
-                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                detail=f"Files must be {limit // (1024 * 1024)} MB or smaller.",
-            )
-        chunks.append(chunk)
-    raw = b"".join(chunks)
+    # The size limit that applies is known from the file name before reading:
+    # an image is never read beyond the image limit.
+    extension = (file.filename or "").rsplit(".", 1)[-1].lower() if "." in (file.filename or "") else ""
+    limit = settings.media_max_image_bytes if extension in _IMAGE_EXTENSIONS else max_upload_bytes()
+    if not _upload_slots.acquire(timeout=10):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="The server is processing other uploads. Try again in a moment.",
+            headers={"Retry-After": "10"},
+        )
+    try:
+        return _store_upload(db, current_user, workspace_id, brand_id, title, file, limit)
+    finally:
+        _upload_slots.release()
+
+
+def _store_upload(
+    db: DBSession,
+    current_user: User,
+    workspace_id: UUID,
+    brand_id: UUID | None,
+    title: str | None,
+    file: UploadFile,
+    limit: int,
+) -> MediaAssetRead:
+    raw = file.file.read(limit + 1)  # one bounded read, one copy in memory
+    if len(raw) > limit:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"Files must be {limit // (1024 * 1024)} MB or smaller.",
+        )
     display_name = sanitize_filename(file.filename)
 
     try:
@@ -312,7 +350,7 @@ def create_media_access_url(
 def get_signed_public_media(
     media_id: UUID,
     expires: int,
-    signature: str = Query(..., min_length=64, max_length=64),
+    signature: str = Query(..., pattern="^[0-9a-f]{64}$"),
     variant: str = Query(default="original", pattern="^original$"),
     db: DBSession = Depends(get_db),
 ) -> Response:

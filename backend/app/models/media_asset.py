@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import DateTime, ForeignKey, Index, String, Text, Uuid
+from sqlalchemy import DateTime, ForeignKey, Index, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.session import Base
@@ -14,7 +14,6 @@ class MediaAsset(Base):
     __tablename__ = "media_assets"
     __table_args__ = (
         Index("ix_media_assets_workspace_created", "workspace_id", "created_at"),
-        Index("ix_media_assets_brand", "brand_id"),
         Index("ix_media_assets_checksum", "workspace_id", "checksum"),
     )
 

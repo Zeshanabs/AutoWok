@@ -21,6 +21,7 @@ vi.mock("@/lib/api", async (importOriginal) => {
   return { ...actual, apiRequest: vi.fn() };
 });
 vi.mock("next/navigation", () => ({
+  usePathname: () => "/dashboard",
   useRouter: () => ({ push, replace: vi.fn() }),
   useParams: () => ({ brandId: "brand-1" }),
 }));

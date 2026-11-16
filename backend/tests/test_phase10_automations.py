@@ -14,10 +14,8 @@ from app.models import (
     AutomationEvent,
     AutomationExecution,
     ContentApproval,
-    ContentProject,
     ContentTask,
     Notification,
-    WorkspaceMembership,
 )
 from app.models.analytics import AnalyticsSyncJob
 from app.services.automation import actions as A

@@ -20,7 +20,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session as DBSession
 
 from app.models import Brand, ContentProject, SocialAccount
-from app.models.analytics import AnalyticsSnapshot, AnalyticsSyncJob, PostAnalytics
+from app.models.analytics import AnalyticsSnapshot, PostAnalytics
 from app.services.analytics import calculations as C
 from app.services.analytics import metrics as M
 from app.services.analytics.sync import analytics_eligibility, last_job

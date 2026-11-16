@@ -23,7 +23,7 @@ Sources (Meta for Developers, checked November 2026, Graph API v26.0):
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 FACEBOOK = "facebook_page"
 INSTAGRAM = "instagram"

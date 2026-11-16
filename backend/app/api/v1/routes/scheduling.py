@@ -4,15 +4,17 @@ from datetime import date, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session as DBSession
+from sqlalchemy.orm import contains_eager
 
+from app.api.v1.dependencies import limits
 from app.api.v1.dependencies.auth import authorize_workspace, get_current_user
 from app.api.v1.routes.publishing import publication_read
 from app.core.config import get_settings
-from app.db.session import get_db
+from app.db.session import get_db, preload
 from app.models import Brand, ContentDraft, ContentProject, ContentPublication, SocialAccount, User
-from app.models.scheduling import ACTIVE_SCHEDULE_STATUSES, ScheduledPost, SchedulingHistory
+from app.models.scheduling import ACTIVE_SCHEDULE_STATUSES, ScheduledPost
 from app.schemas.scheduling import (
     CalendarItem,
     CalendarRead,
@@ -67,6 +69,22 @@ def _resolve_timezone(user: User, requested: str | None) -> str:
 
 def _can_manage(role: str) -> bool:
     return role in scheduling.SCHEDULE_ROLES
+
+
+def _preload_related(db: DBSession, posts: list[ScheduledPost], jobs: list[ContentPublication] | None = None) -> list:
+    """Load everything ``_post_read`` and ``publication_read`` look up by id in
+    five queries instead of several per row. Hold the result while serializing."""
+    post_jobs = preload(db, ContentPublication, [post.publication_id for post in posts])
+    all_jobs = [*post_jobs, *(jobs or [])]
+    return [
+        post_jobs,
+        preload(db, ContentDraft, [post.draft_id for post in posts]),
+        preload(db, ContentProject, [post.project_id for post in posts] + [job.project_id for job in all_jobs]),
+        preload(
+            db, SocialAccount, [post.social_account_id for post in posts] + [job.social_account_id for job in all_jobs]
+        ),
+        preload(db, Brand, [post.brand_id for post in posts]),
+    ]
 
 
 def _post_read(db: DBSession, post: ScheduledPost, *, role: str, detail: bool = False) -> ScheduledPostRead:
@@ -163,6 +181,7 @@ def _schedule_error(exc: scheduling.ScheduleError) -> HTTPException:
 
 @router.post(
     "/workspaces/{workspace_id}/scheduled-posts",
+    dependencies=[Depends(limits.schedule)],
     response_model=ScheduledPostRead,
     status_code=status.HTTP_201_CREATED,
 )
@@ -223,6 +242,7 @@ def list_scheduled_posts(
     if social_account_id:
         query = query.filter(ScheduledPost.social_account_id == social_account_id)
     posts = query.order_by(ScheduledPost.scheduled_at.asc()).limit(limit).all()
+    _related = _preload_related(db, posts)  # noqa: F841 - keeps the batch-loaded rows alive
     reads = [_post_read(db, post, role=membership.role) for post in posts]
     if status_filter:
         reads = [read for read in reads if read.status == status_filter]
@@ -249,7 +269,7 @@ def get_scheduling_history(
     return _post_read(db, post, role=role, detail=True).history
 
 
-@router.patch("/scheduled-posts/{schedule_id}", response_model=ScheduledPostRead)
+@router.patch("/scheduled-posts/{schedule_id}", response_model=ScheduledPostRead, dependencies=[Depends(limits.schedule)])
 def update_scheduled_post(
     schedule_id: UUID,
     payload: ScheduleUpdate,
@@ -276,7 +296,7 @@ def update_scheduled_post(
     return _post_read(db, post, role=role, detail=True)
 
 
-@router.post("/scheduled-posts/{schedule_id}/reschedule", response_model=ScheduledPostRead)
+@router.post("/scheduled-posts/{schedule_id}/reschedule", response_model=ScheduledPostRead, dependencies=[Depends(limits.schedule)])
 def reschedule_post(
     schedule_id: UUID,
     payload: ScheduleReschedule,
@@ -314,7 +334,7 @@ def cancel_scheduled_post(
     return _post_read(db, post, role=role, detail=True)
 
 
-@router.post("/scheduled-posts/{schedule_id}/retry", response_model=ScheduledPostRead)
+@router.post("/scheduled-posts/{schedule_id}/retry", response_model=ScheduledPostRead, dependencies=[Depends(limits.schedule)])
 def retry_scheduled_post(
     schedule_id: UUID,
     payload: ScheduleRetry | None = None,
@@ -370,7 +390,9 @@ def get_calendar(
         schedule_query = schedule_query.filter(ScheduledPost.platform == platform)
     if social_account_id:
         schedule_query = schedule_query.filter(ScheduledPost.social_account_id == social_account_id)
-    for post in schedule_query.all():
+    calendar_posts = schedule_query.all()
+    _related_posts = _preload_related(db, calendar_posts)  # noqa: F841 - keeps the batch-loaded rows alive
+    for post in calendar_posts:
         read = _post_read(db, post, role=membership.role)
         local = ensure_utc(post.scheduled_at).astimezone(zone)
         items.append(
@@ -416,7 +438,9 @@ def get_calendar(
         job_query = job_query.filter(ContentPublication.platform == platform)
     if social_account_id:
         job_query = job_query.filter(ContentPublication.social_account_id == social_account_id)
-    for job in job_query.all():
+    calendar_jobs = job_query.all()
+    _related_jobs = preload(db, ContentProject, [job.project_id for job in calendar_jobs])  # noqa: F841
+    for job in calendar_jobs:
         project = db.get(ContentProject, job.project_id)
         if project is None or (brand_id and project.brand_id != brand_id):
             continue
@@ -452,24 +476,33 @@ def get_calendar(
         items = [item for item in items if item.status == status_filter]
     items.sort(key=lambda item: item.at)
 
-    # Approved drafts that are not yet scheduled or published anywhere.
-    scheduled_drafts = {
-        row.draft_id
-        for row in db.query(ScheduledPost.draft_id).filter(
-            ScheduledPost.workspace_id == workspace_id,
+    # Approved drafts that are not yet scheduled or published anywhere. The
+    # exclusion runs in SQL, so the result is the 50 newest matching drafts
+    # (not 50 drafts minus the excluded ones) and no id sets are loaded.
+    already_scheduled = (
+        db.query(ScheduledPost.id)
+        .filter(
+            ScheduledPost.draft_id == ContentDraft.id,
             ScheduledPost.status.in_((*ACTIVE_SCHEDULE_STATUSES, "published")),
         )
-    }
-    published_drafts = {
-        row.draft_id
-        for row in db.query(ContentPublication.draft_id).filter(
-            ContentPublication.workspace_id == workspace_id, ContentPublication.status == "published"
-        )
-    }
+        .exists()
+    )
+    already_published = (
+        db.query(ContentPublication.id)
+        .filter(ContentPublication.draft_id == ContentDraft.id, ContentPublication.status == "published")
+        .exists()
+    )
     draft_query = (
         db.query(ContentDraft)
         .join(ContentProject, ContentProject.id == ContentDraft.project_id)
-        .filter(ContentProject.workspace_id == workspace_id, ContentProject.status == "approved", ContentDraft.status == "approved")
+        .options(contains_eager(ContentDraft.project))
+        .filter(
+            ContentProject.workspace_id == workspace_id,
+            ContentProject.status == "approved",
+            ContentDraft.status == "approved",
+            ~already_scheduled,
+            ~already_published,
+        )
     )
     if brand_id:
         draft_query = draft_query.filter(ContentProject.brand_id == brand_id)
@@ -486,7 +519,6 @@ def get_calendar(
             brand_name=brands.get(draft.project.brand_id) if draft.project.brand_id else None,
         )
         for draft in draft_query.order_by(ContentProject.approved_at.desc()).limit(50).all()
-        if draft.id not in scheduled_drafts and draft.id not in published_drafts
     ]
     return CalendarRead(
         view=view,
@@ -510,24 +542,53 @@ def get_publishing_queue(
     db: DBSession = Depends(get_db),
 ) -> QueueStatusRead:
     membership = authorize_workspace(workspace_id, current_user, db)
-    jobs = db.query(ContentPublication).filter(ContentPublication.workspace_id == workspace_id).all()
     counts = {key: 0 for key in ("pending", "processing", "publishing", "published", "failed", "cancelled")}
-    for job in jobs:
-        counts[job.status] = counts.get(job.status, 0) + 1
-    posts = db.query(ScheduledPost).filter(ScheduledPost.workspace_id == workspace_id).all()
+    for job_status, total in (
+        db.query(ContentPublication.status, func.count())
+        .filter(ContentPublication.workspace_id == workspace_id)
+        .group_by(ContentPublication.status)
+        .all()
+    ):
+        counts[job_status] = total
     schedule_counts = {key: 0 for key in ("scheduled", "queued", "processing", "published", "failed", "cancelled")}
-    for post in posts:
-        schedule_counts[post.status] = schedule_counts.get(post.status, 0) + 1
-    upcoming_posts = sorted(
-        (post for post in posts if post.status == "scheduled"), key=lambda post: ensure_utc(post.scheduled_at)
+    for post_status, total in (
+        db.query(ScheduledPost.status, func.count())
+        .filter(ScheduledPost.workspace_id == workspace_id)
+        .group_by(ScheduledPost.status)
+        .all()
+    ):
+        schedule_counts[post_status] = total
+    upcoming_posts = (
+        db.query(ScheduledPost)
+        .filter(ScheduledPost.workspace_id == workspace_id, ScheduledPost.status == "scheduled")
+        .order_by(ScheduledPost.scheduled_at.asc())
+        .limit(20)
+        .all()
     )
-    active = [job for job in jobs if job.status in {"processing", "publishing"} or (job.status == "pending" and job.attempt_count == 0)]
-    retrying = [job for job in jobs if job.status == "pending" and job.attempt_count > 0]
-    attention = sorted(
-        (job for job in jobs if job.status == "failed" and job.requires_user_action),
-        key=lambda job: ensure_utc(job.updated_at),
-        reverse=True,
-    )[:25]
+    in_progress = (
+        db.query(ContentPublication)
+        .filter(
+            ContentPublication.workspace_id == workspace_id,
+            ContentPublication.status.in_(("pending", "processing", "publishing")),
+        )
+        .order_by(ContentPublication.created_at.asc())
+        .limit(200)
+        .all()
+    )
+    active = [job for job in in_progress if job.status in {"processing", "publishing"} or job.attempt_count == 0]
+    retrying = [job for job in in_progress if job.status == "pending" and job.attempt_count > 0]
+    attention = (
+        db.query(ContentPublication)
+        .filter(
+            ContentPublication.workspace_id == workspace_id,
+            ContentPublication.status == "failed",
+            ContentPublication.requires_user_action.is_(True),
+        )
+        .order_by(ContentPublication.updated_at.desc())
+        .limit(25)
+        .all()
+    )
+    _related = _preload_related(db, upcoming_posts, [*in_progress, *attention])  # noqa: F841
     return QueueStatusRead(
         counts=counts,
         schedule_counts=schedule_counts,
@@ -535,7 +596,7 @@ def get_publishing_queue(
         active_jobs=[publication_read(db, job) for job in active],
         retrying_jobs=[publication_read(db, job) for job in retrying],
         attention_jobs=[publication_read(db, job) for job in attention],
-        upcoming=[_post_read(db, post, role=membership.role) for post in upcoming_posts[:20]],
+        upcoming=[_post_read(db, post, role=membership.role) for post in upcoming_posts],
     )
 
 

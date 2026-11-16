@@ -67,9 +67,9 @@ Input requirements:
 - Content type: {content_type}
 
 Return valid JSON only with this schema:
-{
+{{
   "ideas": [
-    {
+    {{
       "title": "string",
       "description": "string",
       "content_angle": "string",
@@ -80,9 +80,9 @@ Return valid JSON only with this schema:
       "suggested_hook": "string",
       "relevant_content_pillar": "string",
       "supporting_references": ["string"]
-    }
+    }}
   ]
-}
+}}
 
 Requirements:
 - Produce 6 to 10 ideas.
@@ -128,7 +128,7 @@ Source text:
 {text}
 
 Return valid JSON only with this schema:
-{
+{{
   "output": "string",
   "hook": "string",
   "cta": "string",
@@ -136,7 +136,7 @@ Return valid JSON only with this schema:
   "notes": ["string"],
   "readability_score": 0,
   "brand_alignment": "string"
-}
+}}
 """.format(
             brand_name=cls._stringify((brand or {}).get("name"), "your brand"),
             brand_voice=cls._stringify((brand or {}).get("voice"), "Use the brand's configured voice first."),
@@ -164,7 +164,7 @@ Content:
 {text}
 
 Return schema:
-{
+{{
   "score": 0,
   "summary": "string",
   "strengths": ["string"],
@@ -173,7 +173,7 @@ Return schema:
   "readability": "string",
   "cta_strength": "string",
   "risk_flags": ["string"]
-}
+}}
 """.format(
             brand_name=cls._stringify((brand or {}).get("name"), "your brand"),
             brand_voice=cls._stringify((brand or {}).get("voice"), "Professional and clear"),
@@ -198,17 +198,17 @@ Evidence sources:
 {references}
 
 Return schema:
-{
+{{
   "claims": [
-    {
+    {{
       "claim": "string",
       "status": "supported|unsupported|unclear",
       "reasoning": "string",
       "evidence": ["string"]
-    }
+    }}
   ],
   "overall_verdict": "string"
-}
+}}
 """.format(
             claims="\n".join(f"- {item}" for item in (payload.get("claims") or [])) or "No specific claims were provided.",
             research_summary=(research or {}).get("summary") or "No research report was provided.",

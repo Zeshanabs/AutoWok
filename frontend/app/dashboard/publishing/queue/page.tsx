@@ -1,5 +1,6 @@
 "use client";
 
+import { pollWhileVisible } from "@/lib/polling";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
@@ -57,10 +58,10 @@ export default function PublishingQueuePage() {
         .then((data) => active && (setQueue(data), setError(null)))
         .catch((loadError: unknown) => active && setError(loadError instanceof ApiError ? loadError.message : "The queue could not be loaded."));
     void load();
-    const timer = window.setInterval(() => void load(), 10000);
+    const stopPolling = pollWhileVisible(() => load(), 10000);
     return () => {
       active = false;
-      window.clearInterval(timer);
+      stopPolling();
     };
   }, [workspaceId, fetchQueue]);
 
@@ -82,7 +83,7 @@ export default function PublishingQueuePage() {
         {!workspaceId ? (
           <p className="mt-6 text-sm text-slate-600">Select a workspace.</p>
         ) : !queue ? (
-          <p className="mt-6 text-sm text-slate-500">Loading queue…</p>
+          <p role="status" className="mt-6 text-sm text-slate-500">Loading queue…</p>
         ) : (
           <div className="mt-6 space-y-6">
             <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">

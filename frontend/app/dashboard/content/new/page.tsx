@@ -205,8 +205,8 @@ export default function NewContentProjectPage() {
                 />
               </label>
 
-              <label className="space-y-2 text-sm font-medium text-slate-700 md:col-span-2">
-                Selected platforms
+              <fieldset className="space-y-2 text-sm font-medium text-slate-700 md:col-span-2">
+                <legend>Selected platforms</legend>
                 <div className="flex flex-wrap gap-3">
                   {PLATFORM_OPTIONS.map((platform) => (
                     <label key={platform} className="flex items-center gap-2 rounded-xl border border-slate-300 px-3 py-2 text-sm">
@@ -226,7 +226,7 @@ export default function NewContentProjectPage() {
                     </label>
                   ))}
                 </div>
-              </label>
+              </fieldset>
 
               <label className="space-y-2 text-sm font-medium text-slate-700 md:col-span-2">
                 Keywords (comma-separated)

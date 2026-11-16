@@ -146,6 +146,9 @@ class MetaPublisher:
                     E.classification(E.PLATFORM_TEMPORARY, "The Instagram media container expired before publishing; it will be recreated.", "container_expired")
                 )
             if poll < ctx.max_polls - 1:
+                # Renew the lease while waiting so a slow container is not
+                # mistaken for a crashed worker and published twice.
+                ctx.checkpoint()
                 ctx.sleep(ctx.poll_interval_seconds)
         raise PublishFailure(
             E.classification(E.PLATFORM_TEMPORARY, "Instagram is still processing the media. The job will check again later.", "processing_timeout")

@@ -9,6 +9,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session as DBSession
 
 from app.api.v1.dependencies.auth import get_current_session, get_current_user
+from app.core.config import get_settings
 from app.db.session import get_db
 from app.models import Session, User, Workspace, WorkspaceMembership
 from app.schemas.auth import (
@@ -30,6 +31,7 @@ from app.services.sessions import clear_session_cookie, new_session, set_session
 router = APIRouter(prefix="/auth", tags=["authentication"])
 _DUMMY_PASSWORD_HASH = password_hasher.hash("not-a-real-user-password")
 logger = logging.getLogger("autowok.auth")
+settings = get_settings()
 
 
 def _user_read(user: User) -> UserRead:
@@ -153,6 +155,15 @@ def login(
     )
     enforce_rate_limit(
         request, action="login", identity=email, limit=10, window_seconds=900
+    )
+    # Account-wide ceiling: a guesser spread over many addresses is still bounded.
+    enforce_rate_limit(
+        request,
+        action="login-account",
+        identity=email,
+        limit=settings.rate_limit_login_per_account_15m,
+        window_seconds=900,
+        per_address=False,
     )
     user = db.query(User).filter(User.email == email).first()
     password_hash = user.password_hash if user else _DUMMY_PASSWORD_HASH

@@ -144,7 +144,6 @@ class ResearchFinding(Base):
 
 class ResearchReport(Base):
     __tablename__ = "research_reports"
-    __table_args__ = (Index("ix_research_reports_research_id", "research_id"),)
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
     research_id: Mapped[UUID] = mapped_column(

@@ -32,6 +32,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as DBSession
 
 from app.core.config import get_settings
+from app.core.error_reporting import report_error
 from app.models import SocialAccount
 from app.models.analytics import ACTIVE_SYNC_STATUSES, AnalyticsSyncJob
 from app.services.analytics import errors as E
@@ -249,7 +250,7 @@ def due_sync_job_ids(db: DBSession, *, now: datetime | None = None, limit: int =
     rows = (
         db.query(AnalyticsSyncJob.id)
         .filter(_claimable(now))
-        .order_by(AnalyticsSyncJob.next_attempt_at.asc(), AnalyticsSyncJob.created_at.asc())
+        .order_by(AnalyticsSyncJob.next_attempt_at.asc().nulls_first(), AnalyticsSyncJob.created_at.asc())
         .limit(limit)
         .all()
     )
@@ -330,7 +331,27 @@ def process_sync_job(
         return None
     job.attempt_count += 1
     job.started_at = job.started_at or now
+    if job.attempt_count > job.max_attempts:
+        # Reclaimed after repeated interruptions: stop instead of looping forever
+        # (the active guard would also block every later sync of this account).
+        _finish(job, status="failed", now=now, records=job.records_processed, details=job.details or {})
+        job.error_category = E.PERMANENT
+        job.error_code = "attempts_exhausted"
+        job.last_error = "The synchronization was interrupted repeatedly and has been stopped."
+        _emit_finished(db, job)
+        db.commit()
+        return job.status
     db.commit()
+
+    def renew_lease() -> None:
+        """Keep ownership during a long synchronization so no second worker starts it."""
+        db.execute(
+            update(AnalyticsSyncJob)
+            .where(AnalyticsSyncJob.id == job_id, AnalyticsSyncJob.locked_by == worker_id)
+            .values(lease_expires_at=utc_now() + timedelta(seconds=get_settings().analytics_sync_lease_seconds))
+            .execution_options(synchronize_session=False)
+        )
+        db.commit()
 
     settings = get_settings()
     details: dict = {"attempt": job.attempt_count, "unavailable": {}, "post_errors": [], "requests": 0}
@@ -386,7 +407,10 @@ def process_sync_job(
             details["requests"] += 1
             seen_ids: set[str] = set()
             posts: list[CollectedPost] = []
-            for item in listed:
+            renew_lease()
+            for position, item in enumerate(listed):
+                if position and position % 10 == 0:
+                    renew_lease()
                 item_id = str(item.get("id"))
                 try:
                     if account.platform == M.FACEBOOK:
@@ -453,6 +477,22 @@ def process_sync_job(
             workspace_id=job.workspace_id,
             resource_id=job.id,
             metadata={"category": failure.category, "code": failure.code, "status": job.status},
+        )
+        _emit_finished(db, job)
+        db.commit()
+        return job.status
+
+    except Exception as error:  # noqa: BLE001 - never leave the job "running" with its guard held
+        db.rollback()
+        report_error("analytics_sync", "Analytics synchronization failed unexpectedly", error, job_id=str(job_id))
+        job = db.get(AnalyticsSyncJob, job_id, populate_existing=True)
+        job.records_processed = records
+        _fail(
+            job,
+            E.failure(E.PERMANENT, "unexpected_error", "The synchronization stopped because of an unexpected error."),
+            now=utc_now(),
+            details=details,
+            account=None,
         )
         _emit_finished(db, job)
         db.commit()

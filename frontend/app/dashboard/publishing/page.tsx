@@ -1,5 +1,6 @@
 "use client";
 
+import { pollWhileVisible } from "@/lib/polling";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
@@ -7,6 +8,7 @@ import { useAuth } from "@/components/auth-provider";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { AppShell, ProtectedPage } from "@/components/route-guards";
 import { StatusBadge } from "@/components/status-badge";
+import { useModal } from "@/components/use-modal";
 import { ApiError, apiRequest } from "@/lib/api";
 import { ACTIVE_PUBLICATION_STATUSES, type Publication } from "@/lib/media-types";
 
@@ -28,6 +30,7 @@ export default function PublishingHistoryPage() {
   const [retryTarget, setRetryTarget] = useState<Publication | null>(null);
   const [confirmNotPublished, setConfirmNotPublished] = useState(false);
   const [busy, setBusy] = useState(false);
+  const jobDialogRef = useModal<HTMLDivElement>(selected !== null, () => setSelected(null));
 
   const queryKey = `${workspaceId}|${statusFilter}|${platformFilter}|${sourceFilter}`;
   const load = useCallback(async () => {
@@ -49,15 +52,15 @@ export default function PublishingHistoryPage() {
   const loading = Boolean(workspaceId) && loadedKey !== queryKey;
 
   useEffect(() => {
-    const timer = window.setTimeout(() => void load(), 0);
+    const timer = window.setTimeout(() => load(), 0);
     return () => window.clearTimeout(timer);
   }, [load]);
 
   const hasActive = jobs.some((job) => ACTIVE_PUBLICATION_STATUSES.includes(job.status));
   useEffect(() => {
     if (!hasActive) return;
-    const timer = window.setInterval(() => void load(), 5000);
-    return () => window.clearInterval(timer);
+    const stopPolling = pollWhileVisible(() => load(), 5000);
+    return () => stopPolling();
   }, [hasActive, load]);
 
   const openDetails = async (job: Publication) => {
@@ -123,7 +126,7 @@ export default function PublishingHistoryPage() {
         {!workspaceId ? (
           <p className="mt-6 rounded-xl border border-dashed border-slate-300 p-6 text-sm text-slate-600">Select a workspace.</p>
         ) : loading && jobs.length === 0 ? (
-          <p className="mt-6 text-sm text-slate-500">Loading publishing history…</p>
+          <p role="status" className="mt-6 text-sm text-slate-500">Loading publishing history…</p>
         ) : jobs.length === 0 ? (
           <p className="mt-6 rounded-xl border border-dashed border-slate-300 p-6 text-sm text-slate-600">
             Nothing has been published yet. Approved drafts can be published from the <Link href="/dashboard/content" className="font-medium text-indigo-700">content studio</Link>.
@@ -166,9 +169,9 @@ export default function PublishingHistoryPage() {
 
         {selected && (
           <div className="fixed inset-0 z-40 flex items-end justify-center bg-slate-900/40 p-4 sm:items-center" onClick={() => setSelected(null)}>
-            <div role="dialog" aria-modal="true" aria-label="Job details" className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-6" onClick={(e) => e.stopPropagation()}>
+            <div ref={jobDialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="job-details-title" className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-6" onClick={(e) => e.stopPropagation()}>
               <div className="flex items-center justify-between gap-2">
-                <h2 className="text-lg font-semibold">Publishing job</h2>
+                <h2 id="job-details-title" className="text-lg font-semibold">Publishing job</h2>
                 <StatusBadge status={selected.status} />
               </div>
               <dl className="mt-4 grid grid-cols-2 gap-2 text-sm">

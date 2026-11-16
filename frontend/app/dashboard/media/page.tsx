@@ -199,7 +199,7 @@ export default function MediaLibraryPage() {
             {notice && <p role="status" className="mt-4 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800">{notice}</p>}
 
             {loading && assets.length === 0 ? (
-              <p className="mt-6 text-sm text-slate-500">Loading media…</p>
+              <p role="status" className="mt-6 text-sm text-slate-500">Loading media…</p>
             ) : assets.length === 0 ? (
               <div className="mt-6 rounded-2xl border border-dashed border-slate-300 p-10 text-center text-sm text-slate-600">
                 {search || typeFilter || brandFilter ? "No media matches these filters." : "No media yet. Upload images or videos to attach them to posts."}
@@ -227,7 +227,7 @@ export default function MediaLibraryPage() {
                 <table className="w-full min-w-[640px] text-left text-sm">
                   <thead className="bg-slate-50 text-xs uppercase text-slate-500">
                     <tr>
-                      <th className="p-3">File</th><th className="p-3">Type</th><th className="p-3">Size</th><th className="p-3">Brand</th><th className="p-3">Uploaded</th><th className="p-3" />
+                      <th scope="col" className="p-3">File</th><th scope="col" className="p-3">Type</th><th scope="col" className="p-3">Size</th><th scope="col" className="p-3">Brand</th><th scope="col" className="p-3">Uploaded</th><th scope="col" className="p-3" />
                     </tr>
                   </thead>
                   <tbody>

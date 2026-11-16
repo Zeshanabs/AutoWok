@@ -1,0 +1,248 @@
+# Autowok production / staging stack.
+#
+#   cp .env.production.example .env.production      # fill in every value
+#   docker compose --env-file .env.production -f docker-compose.prod.yml build
+#   docker compose --env-file .env.production -f docker-compose.prod.yml run --rm migrate
+#   docker compose --env-file .env.production -f docker-compose.prod.yml up -d
+#
+# Only the reverse proxy publishes ports. PostgreSQL, Redis, the API and the web
+# server are reachable only on internal networks. See docs/deployment.md.
+#
+# Not provider specific: any host with Docker Compose v2 runs this file. With a
+# managed PostgreSQL/Redis, remove those two services and point DATABASE_URL /
+# REDIS_URL at the managed endpoints.
+
+# A distinct project name: the development stack in this directory is "autowok",
+# and the two must never share containers or volumes.
+name: autowok-prod
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "20m"
+    max-file: "5"
+
+x-hardening: &hardening
+  restart: unless-stopped
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  logging: *logging
+
+x-backend-env: &backend-env
+  APP_ENV: ${APP_ENV:-production}
+  APP_DEBUG: "false"
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
+  LOG_FORMAT: json
+  DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-autowok}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-autowok}
+  REDIS_URL: redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD}@redis:6379/0
+  LOCAL_STORAGE_PATH: /app/storage/local
+  CORS_ORIGINS: ${PUBLIC_ORIGIN:?set PUBLIC_ORIGIN, for example https://app.example.com}
+  PUBLIC_MEDIA_BASE_URL: ${PUBLIC_ORIGIN}
+  SESSION_COOKIE_SECURE: "true"
+  SESSION_COOKIE_SAMESITE: lax
+  ALLOWED_HOSTS: ${ALLOWED_HOSTS:?set ALLOWED_HOSTS, for example app.example.com},backend,localhost,127.0.0.1
+  # The API port is not published; only the proxy on the internal network can reach it.
+  FORWARDED_ALLOW_IPS: "*"
+
+services:
+  proxy:
+    image: caddy:2.8-alpine
+    <<: *hardening
+    cap_add:
+      - NET_BIND_SERVICE
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:?set SITE_ADDRESS, for example app.example.com}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL, the address for certificate expiry notices}
+    volumes:
+      - ./infrastructure/proxy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
+    networks: [edge]
+    mem_limit: 256m
+    cpus: 0.5
+
+  frontend:
+    image: ${FRONTEND_IMAGE:-autowok-frontend:local}
+    build:
+      context: ./frontend
+      target: runtime
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${PUBLIC_ORIGIN}
+        CSP_EXTRA_IMG_SRC: ${CSP_EXTRA_IMG_SRC:-https://*.fbcdn.net https://*.cdninstagram.com}
+    <<: *hardening
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /app/.next/cache
+    networks: [edge]
+    stop_grace_period: 30s
+    mem_limit: 512m
+    cpus: 1.0
+
+  backend:
+    image: ${BACKEND_IMAGE:-autowok-backend:local}
+    build:
+      context: ./backend
+      target: runtime
+    <<: *hardening
+    env_file: [.env.production]
+    environment:
+      <<: *backend-env
+      SERVICE_NAME: autowok-api
+    read_only: true
+    tmpfs:
+      - /tmp
+    volumes:
+      - media_data:/app/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks: [edge, data]
+    # Longer than uvicorn's --timeout-graceful-shutdown (30 s).
+    stop_grace_period: 40s
+    mem_limit: 1g
+    cpus: 1.0
+
+  worker:
+    image: ${BACKEND_IMAGE:-autowok-backend:local}
+    <<: *hardening
+    command: ["python", "-m", "app.worker"]
+    env_file: [.env.production]
+    environment:
+      <<: *backend-env
+      SERVICE_NAME: autowok-worker
+      WORKER_HEARTBEAT_FILE: /tmp/worker.heartbeat
+    read_only: true
+    tmpfs:
+      - /tmp
+    volumes:
+      - media_data:/app/storage
+    healthcheck:
+      test: ["CMD", "python", "-m", "app.worker", "healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks: [data]
+    # The worker finishes the job in progress on SIGTERM; allow a publish to complete.
+    stop_grace_period: 120s
+    mem_limit: 1g
+    cpus: 1.0
+
+  # One-shot: apply database migrations. Run once per release, before "up".
+  migrate:
+    image: ${BACKEND_IMAGE:-autowok-backend:local}
+    command: ["alembic", "upgrade", "head"]
+    env_file: [.env.production]
+    environment:
+      <<: *backend-env
+      SERVICE_NAME: autowok-migrate
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [data]
+    restart: "no"
+    profiles: [ops]
+    logging: *logging
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    logging: *logging
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-autowok}
+      POSTGRES_USER: ${POSTGRES_USER:-autowok}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    networks: [data]
+    stop_grace_period: 60s
+    mem_limit: 1g
+    cpus: 1.0
+    shm_size: 256m
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    logging: *logging
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    # AOF persistence: rate-limit counters and worker wake-ups survive a restart.
+    command: ["sh", "-c", "exec redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy noeviction --requirepass \"$$REDIS_PASSWORD\""]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" --no-auth-warning ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [data]
+    mem_limit: 384m
+    cpus: 0.5
+
+  # One-shot: encrypted database + media backup. See docs/backup-recovery.md.
+  #   docker compose --env-file .env.production -f docker-compose.prod.yml run --rm backup
+  backup:
+    image: postgres:16-alpine
+    entrypoint: ["sh", "/scripts/backup.sh"]
+    environment:
+      PGHOST: postgres
+      PGUSER: ${POSTGRES_USER:-autowok}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: ${POSTGRES_DB:-autowok}
+      BACKUP_PASSPHRASE: ${BACKUP_PASSPHRASE:-}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
+      MEDIA_DIR: /media
+      BACKUP_DIR: /backups
+    volumes:
+      - ./scripts/backup:/scripts:ro
+      - media_data:/media:ro
+      - ${BACKUP_HOST_DIR:-./backups}:/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [data]
+    restart: "no"
+    profiles: [ops]
+    logging: *logging
+
+networks:
+  # Proxy <-> web and API.
+  edge:
+  # API and worker <-> PostgreSQL and Redis. No route to or from the internet.
+  data:
+    internal: true
+
+volumes:
+  postgres_data:
+  redis_data:
+  media_data:
+  caddy_data:
+  caddy_config:

@@ -16,6 +16,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session as DBSession
 
+from app.api.v1.dependencies import limits
 from app.api.v1.dependencies.auth import get_current_user, require_workspace_admin, require_workspace_member
 from app.core.config import get_settings
 from app.db.session import get_db
@@ -327,7 +328,7 @@ def _plan(db: DBSession, workspace_id: UUID, payload: WorkflowStartRequest) -> d
     }
 
 
-@router.post("/agent-workflows/plan", response_model=PlanRead)
+@router.post("/agent-workflows/plan", response_model=PlanRead, dependencies=[Depends(limits.ai_tools)])
 def plan_workflow(
     workspace_id: UUID,
     payload: WorkflowStartRequest,
@@ -354,7 +355,7 @@ def start_workflow(
     db: DBSession = Depends(get_db),
 ) -> dict[str, Any]:
     enforce_rate_limit(
-        request, action="agent-workflow-start", identity=str(current_user.id), limit=10, window_seconds=60, category="AI workflow"
+        request, action="agent-workflow-start", identity=str(current_user.id), per_address=False, limit=10, window_seconds=60, category="AI workflow"
     )
     try:
         workflow = O.create_workflow(
@@ -490,7 +491,7 @@ def cancel_workflow(
 # Human review ---------------------------------------------------------------------
 
 
-@router.post("/agent-workflows/{workflow_id}/accept", response_model=AcceptRead)
+@router.post("/agent-workflows/{workflow_id}/accept", response_model=AcceptRead, dependencies=[Depends(limits.ai_tools)])
 def accept_workflow_output(
     workspace_id: UUID,
     workflow_id: UUID,
@@ -520,7 +521,7 @@ def revise_workflow_output(
     db: DBSession = Depends(get_db),
 ) -> dict[str, Any]:
     enforce_rate_limit(
-        request, action="agent-workflow-revise", identity=str(current_user.id), limit=10, window_seconds=60, category="AI workflow"
+        request, action="agent-workflow-revise", identity=str(current_user.id), per_address=False, limit=10, window_seconds=60, category="AI workflow"
     )
     workflow = _workflow(db, workspace_id, workflow_id)
     try:

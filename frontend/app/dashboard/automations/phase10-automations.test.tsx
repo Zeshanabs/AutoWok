@@ -8,6 +8,7 @@ import type { Automation, DryRunResult } from "@/lib/automation-types";
 import AutomationsPage from "./page";
 
 vi.mock("next/navigation", () => ({
+  usePathname: () => "/dashboard",
   useRouter: () => ({ replace: vi.fn(), push: vi.fn() }),
   useParams: () => ({ automationId: "a1" }),
 }));

@@ -6,7 +6,9 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session as DBSession
 
 from app.api.v1.dependencies.auth import get_current_user
+from app.core.config import get_settings
 from app.db.session import get_db
+from app.services.rate_limit import enforce_user_rate_limit
 from app.models import User, WorkspaceMembership
 from app.schemas.ai_content import CritiqueRequest, FactCheckRequest, IdeaRequest, IdeaResponse, WritingRequest, WritingResponse
 from app.services.ai_content import (
@@ -22,7 +24,26 @@ from app.services.ai_content import (
     WritingAssistantService,
 )
 
-router = APIRouter(tags=["ai content intelligence"])
+settings = get_settings()
+
+
+def _limit_ai_tools(current_user: User = Depends(get_current_user)) -> None:
+    enforce_user_rate_limit(
+        current_user.id,
+        action="ai-tools",
+        limit=settings.rate_limit_ai_tools_per_hour,
+        category="AI content tools",
+    )
+
+
+router = APIRouter(tags=["ai content intelligence"], dependencies=[Depends(_limit_ai_tools)])
+
+
+def _as_uuid(value: object) -> UUID:
+    try:
+        return UUID(str(value))
+    except (ValueError, AttributeError, TypeError) as exc:
+        raise HTTPException(status_code=422, detail="workspace_id must be a valid identifier.") from exc
 
 
 def _workspace_membership(db: DBSession, user: User, workspace_id: UUID) -> WorkspaceMembership:
@@ -47,7 +68,7 @@ def generate_ideas(
     db: DBSession = Depends(get_db),
 ) -> IdeaResponse:
     brand_context = payload.brand or {}
-    target_workspace_id = workspace_id or (payload.workspace_id and UUID(str(payload.workspace_id))) or (brand_context.get("workspace_id") and UUID(str(brand_context.get("workspace_id"))))
+    target_workspace_id = workspace_id or (payload.workspace_id and _as_uuid(payload.workspace_id)) or (brand_context.get("workspace_id") and _as_uuid(brand_context.get("workspace_id")))
     if target_workspace_id is None:
         raise HTTPException(status_code=422, detail="workspace_id is required.")
     _workspace_membership(db, current_user, target_workspace_id)
@@ -74,7 +95,7 @@ def writing_assistant(
     db: DBSession = Depends(get_db),
 ) -> WritingResponse:
     brand_context = payload.brand or {}
-    target_workspace_id = workspace_id or (payload.workspace_id and UUID(str(payload.workspace_id))) or (brand_context.get("workspace_id") and UUID(str(brand_context.get("workspace_id"))))
+    target_workspace_id = workspace_id or (payload.workspace_id and _as_uuid(payload.workspace_id)) or (brand_context.get("workspace_id") and _as_uuid(brand_context.get("workspace_id")))
     if target_workspace_id is None:
         raise HTTPException(status_code=422, detail="workspace_id is required.")
     _workspace_membership(db, current_user, target_workspace_id)
@@ -98,7 +119,7 @@ def critique_content(
     db: DBSession = Depends(get_db),
 ) -> dict[str, object]:
     brand_context = payload.brand or {}
-    target_workspace_id = workspace_id or (payload.workspace_id and UUID(str(payload.workspace_id))) or (brand_context.get("workspace_id") and UUID(str(brand_context.get("workspace_id"))))
+    target_workspace_id = workspace_id or (payload.workspace_id and _as_uuid(payload.workspace_id)) or (brand_context.get("workspace_id") and _as_uuid(brand_context.get("workspace_id")))
     if target_workspace_id is None:
         raise HTTPException(status_code=422, detail="workspace_id is required.")
     _workspace_membership(db, current_user, target_workspace_id)
@@ -115,7 +136,7 @@ def fact_check_content(
     db: DBSession = Depends(get_db),
 ) -> dict[str, object]:
     research_context = payload.research or {}
-    target_workspace_id = workspace_id or (payload.workspace_id and UUID(str(payload.workspace_id))) or (research_context.get("workspace_id") and UUID(str(research_context.get("workspace_id"))))
+    target_workspace_id = workspace_id or (payload.workspace_id and _as_uuid(payload.workspace_id)) or (research_context.get("workspace_id") and _as_uuid(research_context.get("workspace_id")))
     if target_workspace_id is None:
         raise HTTPException(status_code=422, detail="workspace_id is required.")
     _workspace_membership(db, current_user, target_workspace_id)
@@ -132,7 +153,7 @@ def generate_hooks(
     workspace_id = payload.get("workspace_id")
     if not workspace_id:
         raise HTTPException(status_code=422, detail="workspace_id is required.")
-    _workspace_membership(db, current_user, UUID(str(workspace_id)))
+    _workspace_membership(db, current_user, _as_uuid(workspace_id))
     return HookGenerationService(db, workspace_id).generate(payload.get("topic") or "brand growth", objective=payload.get("objective"))
 
 
@@ -145,7 +166,7 @@ def recommend_hashtags(
     workspace_id = payload.get("workspace_id")
     if not workspace_id:
         raise HTTPException(status_code=422, detail="workspace_id is required.")
-    _workspace_membership(db, current_user, UUID(str(workspace_id)))
+    _workspace_membership(db, current_user, _as_uuid(workspace_id))
     return HashtagService(db, workspace_id).recommend(payload.get("topic") or "brand growth", platform=payload.get("platform") or "instagram")
 
 
@@ -158,7 +179,7 @@ def repurpose_content(
     workspace_id = payload.get("workspace_id")
     if not workspace_id:
         raise HTTPException(status_code=422, detail="workspace_id is required.")
-    _workspace_membership(db, current_user, UUID(str(workspace_id)))
+    _workspace_membership(db, current_user, _as_uuid(workspace_id))
     return RepurposingService(db, workspace_id).repurpose(payload.get("text") or "", platform=payload.get("platform") or "instagram")
 
 
@@ -171,7 +192,7 @@ def brand_consistency_check(
     workspace_id = payload.get("workspace_id")
     if not workspace_id:
         raise HTTPException(status_code=422, detail="workspace_id is required.")
-    _workspace_membership(db, current_user, UUID(str(workspace_id)))
+    _workspace_membership(db, current_user, _as_uuid(workspace_id))
     return BrandConsistencyService(db, workspace_id).assess(payload.get("text") or "", brand=payload.get("brand") or {})
 
 
@@ -184,7 +205,7 @@ def score_content(
     workspace_id = payload.get("workspace_id")
     if not workspace_id:
         raise HTTPException(status_code=422, detail="workspace_id is required.")
-    _workspace_membership(db, current_user, UUID(str(workspace_id)))
+    _workspace_membership(db, current_user, _as_uuid(workspace_id))
     return ContentScoringService(db, workspace_id).score(payload.get("text") or "", objective=payload.get("objective"))
 
 
@@ -197,5 +218,5 @@ def rewrite_content(
     workspace_id = payload.get("workspace_id")
     if not workspace_id:
         raise HTTPException(status_code=422, detail="workspace_id is required.")
-    _workspace_membership(db, current_user, UUID(str(workspace_id)))
+    _workspace_membership(db, current_user, _as_uuid(workspace_id))
     return RewritingService(db, workspace_id).rewrite_text(payload.get("text") or "", tone=payload.get("tone") or "professional")

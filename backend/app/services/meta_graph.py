@@ -3,8 +3,11 @@ from __future__ import annotations
 from typing import Any
 from urllib.parse import urlencode
 
+import time
+
 import httpx
 
+from app.core import metrics
 from app.core.config import get_settings
 
 
@@ -249,6 +252,31 @@ class MetaGraphClient:
         return self.get(f"/{account_id}", access_token, fields=fields)
 
     def _request(
+        self,
+        method: str,
+        path: str,
+        *,
+        params: dict[str, str] | None = None,
+        data: dict[str, str] | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
+        """Timed wrapper: records request count, latency and outcome."""
+        started = time.perf_counter()
+        outcome = "error"
+        try:
+            body = self._send(method, path, params=params, data=data, headers=headers)
+            outcome = "ok"
+            return body
+        except MetaGraphError as error:
+            if error.status_code == 429 or error.retry_after_seconds:
+                outcome = "rate_limited"
+            elif error.status_code in {502, 503, 504}:
+                outcome = "unavailable"
+            raise
+        finally:
+            metrics.observe_external("meta", outcome, time.perf_counter() - started)
+
+    def _send(
         self,
         method: str,
         path: str,

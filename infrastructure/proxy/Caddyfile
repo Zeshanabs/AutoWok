@@ -1,0 +1,68 @@
+# Autowok reverse proxy: HTTPS termination and routing.
+#
+# SITE_ADDRESS is the public host name (for example app.example.com). Caddy
+# obtains and renews a certificate for it automatically and redirects HTTP to
+# HTTPS. With SITE_ADDRESS=localhost it uses a locally trusted certificate, which
+# is how the stack is tested before DNS points at the server.
+#
+# One origin serves everything: /api/* goes to the API, the rest to the web app.
+# A single origin keeps the session cookie SameSite=Lax and needs no cross-site CORS.
+{
+	email {$ACME_EMAIL}
+	servers {
+		# Bound slow clients (slowloris) and oversized headers.
+		timeouts {
+			read_header 10s
+			read_body 120s
+			idle 2m
+		}
+		max_header_size 16KB
+	}
+}
+
+{$SITE_ADDRESS} {
+	encode zstd gzip
+
+	header {
+		-Server
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+	}
+
+	# Monitoring and API documentation are never served to the internet.
+	# (Inside "handle" so it is evaluated before the routes below: handle blocks
+	# are mutually exclusive and the first match wins.)
+	@internal path /metrics /metrics/* /docs /docs/* /redoc /openapi.json /api/v1/health/details
+	handle @internal {
+		respond 404
+	}
+
+	# Media uploads: the only large request bodies (the API enforces the exact limit).
+	@upload path /api/v1/media-assets/upload
+	handle @upload {
+		request_body {
+			max_size 110MB
+		}
+		reverse_proxy backend:8000
+	}
+
+	handle /api/* {
+		request_body {
+			max_size 2MB
+		}
+		reverse_proxy backend:8000 {
+			# AI generation can take up to the Groq timeout.
+			transport http {
+				response_header_timeout 120s
+			}
+		}
+	}
+
+	handle {
+		reverse_proxy frontend:3000
+	}
+
+	log {
+		output stdout
+		format json
+	}
+}

@@ -1,5 +1,6 @@
 "use client";
 
+import { pollWhileVisible } from "@/lib/polling";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
@@ -116,15 +117,15 @@ export default function AutomationDetailPage() {
   }, [workspaceId, automationId, executionFilter]);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => void load(), 0);
+    const timer = window.setTimeout(() => load(), 0);
     return () => window.clearTimeout(timer);
   }, [load]);
 
   const hasActive = executions.some((item) => item.status === "pending" || item.status === "running");
   useEffect(() => {
     if (!hasActive) return;
-    const timer = window.setInterval(() => void load(), 5000);
-    return () => window.clearInterval(timer);
+    const stopPolling = pollWhileVisible(() => load(), 5000);
+    return () => stopPolling();
   }, [hasActive, load]);
 
   const act = async (path: string, success: string, method: "POST" | "DELETE" = "POST") => {
@@ -209,7 +210,7 @@ export default function AutomationDetailPage() {
         {error && <p role="alert" className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-800">{error}</p>}
         {notice && <p role="status" className="mt-4 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800">{notice}</p>}
         {!loaded ? (
-          <p className="mt-6 text-sm text-slate-500">Loading…</p>
+          <p role="status" className="mt-6 text-sm text-slate-500">Loading…</p>
         ) : automation ? (
           <div className="mt-4 grid gap-6 lg:grid-cols-[3fr_2fr]">
             <div className="space-y-6">

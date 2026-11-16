@@ -18,8 +18,13 @@ def test_health_endpoint() -> None:
 
 
 def test_ready_endpoint() -> None:
+    # This module uses the real (possibly absent) database and Redis, so both
+    # outcomes are valid here; the status code must agree with the payload.
+    # tests/test_phase12_operations.py covers each state deterministically.
     response = client.get("/api/v1/ready")
-    assert response.status_code == 200
     payload = response.json()
     assert payload["service"] == "Autowok"
     assert "dependencies" in payload
+    ready = all(payload["dependencies"].values())
+    assert response.status_code == (200 if ready else 503)
+    assert payload["status"] == ("ready" if ready else "degraded")

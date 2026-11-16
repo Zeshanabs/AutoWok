@@ -71,7 +71,7 @@ function PlatformComparisonSection() {
           {error}
         </p>
       )}
-      {!data && loading && <p className="mt-2 text-sm text-slate-500">Loading comparison…</p>}
+      {!data && loading && <p role="status" className="mt-2 text-sm text-slate-500">Loading comparison…</p>}
       {data && (
         <>
           <p className="mt-1 text-sm text-slate-600">{data.note}</p>
@@ -79,13 +79,13 @@ function PlatformComparisonSection() {
             <table className="w-full min-w-[560px] text-left text-sm">
               <thead className="text-xs text-slate-500">
                 <tr>
-                  <th className="py-2 pr-3">Post metric (per post average)</th>
+                  <th scope="col" className="py-2 pr-3">Post metric (per post average)</th>
                   {data.platforms.map((platform) => (
-                    <th key={platform.key} className="py-2 pr-3">
+                    <th scope="col" key={platform.key} className="py-2 pr-3">
                       {platform.label}
                     </th>
                   ))}
-                  <th className="py-2 pr-3">Comparable</th>
+                  <th scope="col" className="py-2 pr-3">Comparable</th>
                 </tr>
               </thead>
               <tbody>
@@ -151,7 +151,7 @@ export default function AnalyticsOverviewPage() {
           {error}
         </p>
       )}
-      {!data && loading && <p className="text-sm text-slate-500">Loading overview…</p>}
+      {!data && loading && <p role="status" className="text-sm text-slate-500">Loading overview…</p>}
       {data && (
         <div className={loading ? "space-y-6 opacity-60 transition-opacity" : "space-y-6"}>
           {data.accounts.length === 0 ? (

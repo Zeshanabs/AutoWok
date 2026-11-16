@@ -50,3 +50,7 @@ def register(tasks: list[Callable[[DBSession], int]]) -> None:
     for task in (emit_approval_reminders, dispatch_automation_events, run_automation_executions):
         if task not in tasks:
             tasks.append(task)
+
+
+# Reminders are due per hour; scanning pending approvals once a minute is enough.
+emit_approval_reminders.min_interval_seconds = get_settings().worker_housekeeping_interval_seconds  # type: ignore[attr-defined]

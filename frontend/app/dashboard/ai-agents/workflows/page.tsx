@@ -155,7 +155,7 @@ export default function WorkflowBuilderPage() {
         {!workspaceId ? (
           <p className="mt-6 rounded-xl border border-dashed border-slate-300 p-6 text-sm text-slate-600">Select a workspace.</p>
         ) : loading ? (
-          <p className="mt-6 text-sm text-slate-500">Loading workflows…</p>
+          <p role="status" className="mt-6 text-sm text-slate-500">Loading workflows…</p>
         ) : (
           <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,24rem)]">
             <form onSubmit={review} className="space-y-5 rounded-2xl border border-slate-200 bg-white p-5">
@@ -165,7 +165,7 @@ export default function WorkflowBuilderPage() {
                   {(catalog?.workflows ?? []).map((workflow) => (
                     <label
                       key={workflow.key}
-                      className={`cursor-pointer rounded-xl border p-3 text-sm ${workflowType === workflow.key ? "border-indigo-600 bg-indigo-50" : "border-slate-200 hover:border-slate-300"}`}
+                      className={`cursor-pointer rounded-xl border p-3 text-sm has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-indigo-600 has-[:focus-visible]:ring-offset-2 ${workflowType === workflow.key ? "border-indigo-600 bg-indigo-50" : "border-slate-200 hover:border-slate-300"}`}
                     >
                       <input
                         type="radio"

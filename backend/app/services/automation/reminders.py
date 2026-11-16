@@ -53,6 +53,7 @@ def emit_due_approval_reminders(db: DBSession, *, now: datetime | None = None, l
             ContentApproval.status == "pending",
             ContentProject.workspace_id.in_(list(workspace_ids)),
             ContentApproval.created_at <= now - timedelta(hours=1),
+            ContentApproval.created_at >= now - timedelta(hours=MAX_REMINDER_HOURS + 1),
         )
         .order_by(ContentApproval.created_at.asc())
         .limit(limit)

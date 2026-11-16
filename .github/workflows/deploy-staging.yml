@@ -1,0 +1,117 @@
+name: Deploy to staging
+
+# Manual only. Nothing is deployed on push or merge.
+#
+# A person starts this workflow for a chosen commit, and the "staging" GitHub
+# environment must be configured with required reviewers so a second person
+# approves before any step runs. All credentials are environment secrets.
+#
+# Required "staging" environment secrets:
+#   STAGING_SSH_HOST, STAGING_SSH_USER, STAGING_SSH_KEY, STAGING_SSH_KNOWN_HOSTS
+#   STAGING_DEPLOY_PATH   directory on the server that holds docker-compose.prod.yml,
+#                         infrastructure/, scripts/ and .env.production
+# Required "staging" environment variables:
+#   STAGING_PUBLIC_ORIGIN  for example https://staging.example.com
+#
+# The server's .env.production is managed on the server (or by your secret
+# store); this workflow never writes application secrets.
+#
+# STATUS: this workflow has not been executed. It needs a staging server and the
+# secrets above before its first run. See docs/ci-cd.md.
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Commit, tag or branch to deploy (must have passed CI)"
+        required: true
+        default: main
+      run_migrations:
+        description: "Apply database migrations before starting the new version"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build and push images
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: staging
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+      - id: meta
+        run: echo "tag=$(git rev-parse --short=12 HEAD)" >> "$GITHUB_OUTPUT"
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push the API/worker image
+        run: |
+          image=ghcr.io/${GITHUB_REPOSITORY,,}/backend:${{ steps.meta.outputs.tag }}
+          docker build --target runtime -t "$image" backend
+          docker push "$image"
+      - name: Build and push the web image
+        run: |
+          image=ghcr.io/${GITHUB_REPOSITORY,,}/frontend:${{ steps.meta.outputs.tag }}
+          docker build --target runtime \
+            --build-arg NEXT_PUBLIC_API_BASE_URL="${{ vars.STAGING_PUBLIC_ORIGIN }}" \
+            -t "$image" frontend
+          docker push "$image"
+
+  deploy:
+    name: Deploy to the staging server
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: staging
+    steps:
+      - name: Configure SSH
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "${{ secrets.STAGING_SSH_KEY }}" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          printf '%s\n' "${{ secrets.STAGING_SSH_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+      - name: Back up, migrate, start the new version, verify
+        env:
+          TARGET: ${{ secrets.STAGING_SSH_USER }}@${{ secrets.STAGING_SSH_HOST }}
+          DEPLOY_PATH: ${{ secrets.STAGING_DEPLOY_PATH }}
+          TAG: ${{ needs.build.outputs.tag }}
+          RUN_MIGRATIONS: ${{ inputs.run_migrations }}
+        run: |
+          repo="ghcr.io/${GITHUB_REPOSITORY,,}"
+          ssh -i ~/.ssh/id_deploy -o StrictHostKeyChecking=yes "$TARGET" \
+            "DEPLOY_PATH='$DEPLOY_PATH' BACKEND_IMAGE='$repo/backend:$TAG' FRONTEND_IMAGE='$repo/frontend:$TAG' RUN_MIGRATIONS='$RUN_MIGRATIONS' sh -s" <<'REMOTE'
+          set -eu
+          cd "$DEPLOY_PATH"
+          export BACKEND_IMAGE FRONTEND_IMAGE
+          compose="docker compose --env-file .env.production -f docker-compose.prod.yml"
+          $compose pull backend worker frontend
+          # A backup before every schema change (docs/backup-recovery.md).
+          $compose run --rm backup
+          if [ "$RUN_MIGRATIONS" = "true" ]; then
+            $compose run --rm migrate
+          fi
+          $compose up -d --no-build --remove-orphans
+          # Fail the deployment if the new version does not become healthy.
+          for i in $(seq 1 30); do
+            if $compose exec -T backend python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/v1/ready', timeout=4).status == 200 else 1)"; then
+              echo "Staging is ready on $BACKEND_IMAGE"; exit 0
+            fi
+            sleep 5
+          done
+          echo "The new version did not become ready. Roll back with the previous image tags (docs/deployment.md)."
+          exit 1
+          REMOTE

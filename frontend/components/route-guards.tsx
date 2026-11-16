@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
 import { useAuth } from "@/components/auth-provider";
 
@@ -17,7 +17,11 @@ export function ProtectedPage({ children }: { children: ReactNode }) {
   }, [status, router]);
 
   if (status === "loading" || status === "unauthenticated") {
-    return <p className="p-8 text-sm text-slate-500">Checking your session…</p>;
+    return (
+      <main>
+        <p role="status" className="p-8 text-sm text-slate-600">Checking your session…</p>
+      </main>
+    );
   }
   if (status === "unavailable") {
     return (
@@ -48,73 +52,75 @@ export function GuestPage({ children }: { children: ReactNode }) {
   }, [status, router]);
 
   if (status === "loading" || status === "authenticated") {
-    return <p className="p-8 text-sm text-slate-500">Checking your session…</p>;
+    return (
+      <main>
+        <p role="status" className="p-8 text-sm text-slate-600">Checking your session…</p>
+      </main>
+    );
   }
   return <>{children}</>;
 }
 
+const NAV_LINKS: { href: string; label: string }[] = [
+  { href: "/workspaces", label: "Workspaces" },
+  { href: "/brands", label: "Brands" },
+  { href: "/dashboard/research", label: "Research" },
+  { href: "/dashboard/content", label: "Content studio" },
+  { href: "/dashboard/calendar", label: "Calendar" },
+  { href: "/dashboard/media", label: "Media" },
+  { href: "/dashboard/publishing", label: "Publishing" },
+  { href: "/dashboard/analytics", label: "Analytics" },
+  { href: "/dashboard/automations", label: "Automations" },
+  { href: "/dashboard/ai-agents", label: "AI agents" },
+  { href: "/dashboard/notifications", label: "Notifications" },
+  { href: "/settings/ai", label: "AI settings" },
+  { href: "/settings/social-accounts", label: "Social accounts" },
+  { href: "/settings/security", label: "Security" },
+];
+
 export function AppShell({ children }: { children: ReactNode }) {
   const { user, selectedWorkspace, logout } = useAuth();
+  const pathname = usePathname() ?? "";
   const [logoutError, setLogoutError] = useState<string | null>(null);
+  const section = pathname === "/dashboard" ? "Dashboard" : NAV_LINKS.find((link) => pathname === link.href || pathname.startsWith(`${link.href}/`))?.label;
   return (
-    <main className="min-h-screen bg-slate-50 text-slate-900">
+    <div className="min-h-screen bg-slate-50 text-slate-900">
+      <title>{section ? `${section} · Autowok` : "Autowok"}</title>
+      <a
+        href="#content"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-lg focus:bg-white focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:shadow"
+      >
+        Skip to content
+      </a>
       <header className="border-b border-slate-200 bg-white">
-        <nav className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-6">
-          <Link href="/dashboard" className="font-bold tracking-tight">
+        <nav aria-label="Primary" className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-6">
+          <Link href="/dashboard" className="font-bold tracking-tight" aria-current={pathname === "/dashboard" ? "page" : undefined}>
             Autowok
           </Link>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
             {selectedWorkspace && (
-              <span className="hidden text-slate-500 sm:inline">
+              <span className="hidden text-slate-600 sm:inline">
                 {selectedWorkspace.name} · {selectedWorkspace.role}
               </span>
             )}
-            <Link href="/workspaces" className="hover:text-indigo-700">
-              Workspaces
-            </Link>
-            <Link href="/brands" className="hover:text-indigo-700">
-              Brands
-            </Link>
-            <Link href="/dashboard/research" className="hover:text-indigo-700">
-              Research
-            </Link>
-            <Link href="/dashboard/content" className="hover:text-indigo-700">
-              Content studio
-            </Link>
-            <Link href="/dashboard/calendar" className="hover:text-indigo-700">
-              Calendar
-            </Link>
-            <Link href="/dashboard/media" className="hover:text-indigo-700">
-              Media
-            </Link>
-            <Link href="/dashboard/publishing" className="hover:text-indigo-700">
-              Publishing
-            </Link>
-            <Link href="/dashboard/analytics" className="hover:text-indigo-700">
-              Analytics
-            </Link>
-            <Link href="/dashboard/automations" className="hover:text-indigo-700">
-              Automations
-            </Link>
-            <Link href="/dashboard/ai-agents" className="hover:text-indigo-700">
-              AI agents
-            </Link>
-            <Link href="/dashboard/notifications" className="hover:text-indigo-700">
-              Notifications
-            </Link>
-            <Link href="/settings/ai" className="hover:text-indigo-700">
-              AI settings
-            </Link>
-            <Link href="/settings/social-accounts" className="hover:text-indigo-700">
-              Social accounts
-            </Link>
-            <Link href="/settings/security" className="hover:text-indigo-700">
-              Security
-            </Link>
-            <span className="hidden text-slate-500 md:inline">
+            {NAV_LINKS.map((link) => {
+              const current = pathname === link.href || pathname.startsWith(`${link.href}/`);
+              return (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  aria-current={current ? "page" : undefined}
+                  className={current ? "font-semibold text-indigo-700" : "hover:text-indigo-700"}
+                >
+                  {link.label}
+                </Link>
+              );
+            })}
+            <span className="hidden text-slate-600 md:inline">
               {user?.full_name}
             </span>
             <button
+              type="button"
               onClick={() => {
                 setLogoutError(null);
                 void logout().catch((error: unknown) =>
@@ -137,7 +143,9 @@ export function AppShell({ children }: { children: ReactNode }) {
           </p>
         )}
       </header>
-      <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-10">{children}</div>
-    </main>
+      <main id="content" tabIndex={-1} className="mx-auto max-w-6xl px-4 py-8 outline-none sm:px-6 sm:py-10">
+        {children}
+      </main>
+    </div>
   );
 }

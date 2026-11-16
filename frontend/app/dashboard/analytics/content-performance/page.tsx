@@ -64,7 +64,7 @@ export default function ContentPerformancePage() {
           {error}
         </p>
       )}
-      {!data && loading && <p className="text-sm text-slate-500">Loading content performance…</p>}
+      {!data && loading && <p role="status" className="text-sm text-slate-500">Loading content performance…</p>}
       {data && (
         <div className={loading ? "space-y-6 opacity-60 transition-opacity" : "space-y-6"}>
           <section className="grid gap-4 md:grid-cols-4" aria-label="Period summary">

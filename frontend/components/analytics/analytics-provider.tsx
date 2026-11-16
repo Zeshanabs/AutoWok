@@ -105,10 +105,15 @@ export function AnalyticsProvider({ children }: { children: ReactNode }) {
   const activeJobs = sync?.active_jobs ?? 0;
   useEffect(() => {
     if (!workspaceId || activeJobs === 0) return;
+    // Only the sync status is polled (and not in hidden tabs); the dashboards
+    // reload once, when the synchronization finishes.
     const timer = window.setInterval(() => {
-      void refreshSync().then(() => setDataVersion((value) => value + 1));
+      if (!document.hidden) void refreshSync();
     }, 5000);
-    return () => window.clearInterval(timer);
+    return () => {
+      window.clearInterval(timer);
+      setDataVersion((value) => value + 1);
+    };
   }, [workspaceId, activeJobs, refreshSync]);
 
   const visibleAccounts = useMemo(

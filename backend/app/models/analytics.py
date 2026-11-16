@@ -34,6 +34,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     Uuid,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -97,6 +98,7 @@ class PostAnalytics(Base):
         UniqueConstraint("social_account_id", "external_post_id", name="uq_post_analytics_account_post"),
         Index("ix_post_analytics_workspace_published", "workspace_id", "published_at"),
         Index("ix_post_analytics_publication", "publication_id"),
+        Index("ix_post_analytics_draft", "draft_id", postgresql_where=text("draft_id IS NOT NULL"), sqlite_where=text("draft_id IS NOT NULL")),
         CheckConstraint("platform IN ('facebook_page', 'instagram')", name="ck_post_analytics_platform"),
     )
 

@@ -1,4 +1,4 @@
-.PHONY: up down backend frontend worker tests lint typecheck build docs help
+.PHONY: up down backend frontend worker tests lint typecheck build docs help check audit perf-seed perf-bench prod-config prod-build
 
 help:
 	@echo "Autowok local commands"
@@ -14,6 +14,10 @@ help:
 	@echo "  make build       Build the frontend for production"
 	@echo "  make migrate     Apply Alembic migrations"
 	@echo "  make status      Show repository status"
+	@echo "  make check       Run every local check (lint, types, backend and frontend tests)"
+	@echo "  make audit       Check dependencies for known vulnerabilities"
+	@echo "  make prod-config Validate docker-compose.prod.yml with .env.production"
+	@echo "  make prod-build  Build the production images"
 
 up:
 	docker compose up --build -d
@@ -42,3 +46,14 @@ migrate:
 	cd backend && alembic upgrade head
 status:
 	git status --short --branch
+
+check:
+	cd backend && python -m ruff check app perf scripts tests && python -m pytest
+	cd frontend && npm run lint && npx next typegen && npx tsc --noEmit && npm test
+audit:
+	cd backend && python -m pip_audit --requirement constraints.txt --no-deps --disable-pip
+	cd frontend && npm audit --omit=dev --audit-level=high
+prod-config:
+	docker compose --env-file .env.production -f docker-compose.prod.yml config -q
+prod-build:
+	docker compose --env-file .env.production -f docker-compose.prod.yml build

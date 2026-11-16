@@ -5,8 +5,10 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session as DBSession
+from sqlalchemy.orm import selectinload
 
 from app.api.v1.dependencies.auth import get_current_user
+from app.core.config import get_settings
 from app.db.session import get_db
 from app.models import (
     Brand,
@@ -18,6 +20,8 @@ from app.models import (
     ResearchReport,
     User,
     WorkspaceMembership,
+    ContentPublication,
+    ScheduledPost,
 )
 from app.schemas.content import (
     ContentAssignRequest,
@@ -34,10 +38,12 @@ from app.schemas.content import (
     PlatformValidationRead,
 )
 from app.services.audit import record_audit
+from app.services.rate_limit import enforce_user_rate_limit
 from app.services.automation import events as automation_events
 from app.services.content_studio import ContentStudioService, ContentValidationError
 
 router = APIRouter(tags=["content studio"])
+settings = get_settings()
 
 
 def _workspace_membership(db: DBSession, user: User, workspace_id: UUID) -> WorkspaceMembership:
@@ -180,18 +186,25 @@ def create_content_project(
 
 @router.get("/content/projects", response_model=list[ContentProjectRead])
 def list_content_projects(
+    response: Response,
     workspace_id: UUID | None = Query(default=None),
+    limit: int = Query(default=200, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
     current_user: User = Depends(get_current_user),
     db: DBSession = Depends(get_db),
 ) -> list[ContentProjectRead]:
+    """Newest first. ``X-Total-Count`` carries the number of matching projects."""
     if workspace_id is not None:
         _workspace_membership(db, current_user, workspace_id)
-        projects = db.query(ContentProject).filter(ContentProject.workspace_id == workspace_id).order_by(ContentProject.created_at.desc()).all()
-        return [_project_read(project) for project in projects]
-    workspace_ids = [row.workspace_id for row in db.query(WorkspaceMembership.workspace_id).filter(WorkspaceMembership.user_id == current_user.id).all()]
-    if not workspace_ids:
-        return []
-    projects = db.query(ContentProject).filter(ContentProject.workspace_id.in_(workspace_ids)).order_by(ContentProject.created_at.desc()).all()
+        query = db.query(ContentProject).filter(ContentProject.workspace_id == workspace_id)
+    else:
+        workspace_ids = [row.workspace_id for row in db.query(WorkspaceMembership.workspace_id).filter(WorkspaceMembership.user_id == current_user.id).all()]
+        if not workspace_ids:
+            response.headers["X-Total-Count"] = "0"
+            return []
+        query = db.query(ContentProject).filter(ContentProject.workspace_id.in_(workspace_ids))
+    response.headers["X-Total-Count"] = str(query.count())
+    projects = query.order_by(ContentProject.created_at.desc(), ContentProject.id.desc()).offset(offset).limit(limit).all()
     return [_project_read(project) for project in projects]
 
 
@@ -278,6 +291,12 @@ def generate_content_draft(
         raise HTTPException(status_code=404, detail="Content project not found.")
     _workspace_membership(db, current_user, project.workspace_id)
     _ensure_project_editable(project)
+    enforce_user_rate_limit(
+        current_user.id,
+        action="ai-generate",
+        limit=settings.rate_limit_ai_generate_per_hour,
+        category="AI generation",
+    )
     service = ContentStudioService(db)
     selected_platform = platform or (project.selected_platforms[0] if project.selected_platforms else "instagram")
     if selected_platform not in project.selected_platforms:
@@ -352,7 +371,13 @@ def list_content_drafts(
     if project is None:
         raise HTTPException(status_code=404, detail="Content project not found.")
     _workspace_membership(db, current_user, project.workspace_id)
-    drafts = db.query(ContentDraft).filter(ContentDraft.project_id == project_id).order_by(ContentDraft.created_at.desc()).all()
+    drafts = (
+        db.query(ContentDraft)
+        .options(selectinload(ContentDraft.versions))
+        .filter(ContentDraft.project_id == project_id)
+        .order_by(ContentDraft.created_at.desc())
+        .all()
+    )
     return [_draft_read(draft) for draft in drafts]
 
 
@@ -661,10 +686,62 @@ def delete_content_project(
     current_user: User = Depends(get_current_user),
     db: DBSession = Depends(get_db),
 ) -> Response:
+    """Delete a content project.
+
+    Owners and Admins may delete any project; a Member only their own project
+    while it is still a draft. A project that has been published, is being
+    published or has an active schedule cannot be deleted: deleting it would
+    cancel the schedule and erase the publishing record. Cancel the schedule
+    first; published content stays as a record.
+    """
     project = db.query(ContentProject).filter(ContentProject.id == project_id).first()
     if project is None:
         raise HTTPException(status_code=404, detail="Content project not found.")
-    _workspace_membership(db, current_user, project.workspace_id)
+    membership = _workspace_membership(db, current_user, project.workspace_id)
+    is_admin = membership.role in {"OWNER", "ADMIN"}
+    if not is_admin and not (project.created_by == current_user.id and project.status == "draft"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only an Owner or Admin can delete this content. Members can delete their own drafts.",
+        )
+    has_publications = (
+        db.query(ContentPublication.id)
+        .filter(
+            ContentPublication.project_id == project.id,
+            ContentPublication.status.in_(("pending", "processing", "publishing", "published")),
+        )
+        .first()
+        is not None
+    )
+    uncertain = (
+        db.query(ContentPublication.id)
+        .filter(ContentPublication.project_id == project.id, ContentPublication.outcome_uncertain.is_(True))
+        .first()
+        is not None
+    )
+    active_schedule = (
+        db.query(ScheduledPost.id)
+        .filter(ScheduledPost.project_id == project.id, ScheduledPost.status.in_(("scheduled", "queued", "processing")))
+        .first()
+        is not None
+    )
+    if has_publications or uncertain or active_schedule:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "This content has been published or is scheduled, so it cannot be deleted. "
+                "Cancel its schedule first; published content is kept as a record."
+            ),
+        )
+    record_audit(
+        db,
+        action="content.project_deleted",
+        resource_type="content_project",
+        actor_user_id=current_user.id,
+        workspace_id=project.workspace_id,
+        resource_id=project.id,
+        metadata={"status": project.status},
+    )
     db.delete(project)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

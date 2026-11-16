@@ -334,7 +334,7 @@ export default function AISettingsPage() {
               </p>
             )}
             {loading ? (
-              <p className="mt-6">Loading providers…</p>
+              <p role="status" className="mt-6">Loading providers…</p>
             ) : (
               <>
               {groqStatus?.source === "environment" && (

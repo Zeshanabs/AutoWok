@@ -7,7 +7,9 @@ from uuid import UUID
 
 from fastapi import Depends, HTTPException, Request, Response, status
 from sqlalchemy.orm import Session as DBSession
+from sqlalchemy.orm import joinedload
 
+from app.core import context
 from app.core.config import get_settings
 from app.db.session import get_db
 from app.models import Session, User, WorkspaceMembership
@@ -29,7 +31,9 @@ def get_current_session(
     if not token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required.")
     token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
-    session = db.query(Session).filter(Session.token_hash == token_hash).first()
+    session = (
+        db.query(Session).options(joinedload(Session.user)).filter(Session.token_hash == token_hash).first()
+    )
     now = datetime.now(timezone.utc)
     if (
         session is None
@@ -39,8 +43,13 @@ def get_current_session(
     ):
         clear_session_cookie(response)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required.")
-    session.last_used_at = now
-    db.commit()
+    # Writing last_used_at on every request costs a commit per API call; it only
+    # feeds the "last active" display, so refresh it at a bounded interval.
+    last_used = _as_utc(session.last_used_at) if session.last_used_at else None
+    if last_used is None or (now - last_used).total_seconds() >= settings.session_touch_interval_seconds:
+        session.last_used_at = now
+        db.commit()
+    context.bind(user_id=str(session.user_id))
     return session
 
 
@@ -68,6 +77,7 @@ def authorize_workspace(
         membership.workspace.owner_id == current_user.id
     ):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace not found.")
+    context.bind(workspace_id=str(workspace_id))
     if allowed_roles is not None and membership.role not in allowed_roles:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient workspace permissions.")
     return membership

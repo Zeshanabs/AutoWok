@@ -26,6 +26,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as DBSession
 
 from app.core.config import get_settings
+from app.core.error_reporting import report_error
 from app.models import ContentDraft, ContentPublication, SocialAccount
 from app.models.scheduling import ScheduledPost, SchedulingHistory
 from app.services.audit import record_audit
@@ -388,6 +389,83 @@ def _fail_due_post(db: DBSession, post: ScheduledPost, message: str, action: str
     )
 
 
+def _schedule_one(db: DBSession, row, now: datetime, settings) -> bool:
+    """Queue one due post. Returns False when another worker claimed it first."""
+    claimed = db.execute(
+        update(ScheduledPost)
+        .where(
+            ScheduledPost.id == row.id,
+            ScheduledPost.status == "scheduled",
+            ScheduledPost.revision == row.revision,
+            ScheduledPost.scheduled_at <= now,
+        )
+        .values(status="queued", queued_at=now, updated_at=now)
+        .execution_options(synchronize_session=False)
+    )
+    if claimed.rowcount != 1:
+        db.rollback()
+        return False
+    post = db.get(ScheduledPost, row.id, populate_existing=True)
+    lateness = (now - ensure_utc(post.scheduled_at)).total_seconds()
+    if lateness > settings.schedule_max_lateness_seconds:
+        _fail_due_post(
+            db,
+            post,
+            f"Missed the publishing window: the scheduler was unavailable for {int(lateness // 60)} minutes "
+            "after the scheduled time. Reschedule the post.",
+            "missed",
+        )
+        db.commit()
+        return True
+
+    draft = db.get(ContentDraft, post.draft_id)
+    account = db.get(SocialAccount, post.social_account_id)
+    if draft is None or account is None:
+        _fail_due_post(db, post, "The content or social account was deleted.", "validation_failed")
+        db.commit()
+        return True
+    report = evaluate_eligibility(
+        db,
+        draft=draft,
+        account=account,
+        exclude_schedule_id=post.id,
+        expected_version=post.content_version_number,
+    )
+    if not report.eligible:
+        _fail_due_post(db, post, "Publishing was blocked: " + " ".join(report.errors), "validation_failed")
+        db.commit()
+        return True
+    try:
+        job, _created = publishing.create_publication(
+            db,
+            draft=draft,
+            account=account,
+            report=report,
+            requested_by=post.updated_by or post.created_by,
+            idempotency_key=f"schedule:{post.id}:{post.revision}",
+            source="schedule",
+            enqueue=False,
+            commit=False,
+        )
+    except publishing.PublishingConflict as exc:
+        # create_publication rolled back the claim; record the failure atomically.
+        db.execute(
+            update(ScheduledPost)
+            .where(ScheduledPost.id == row.id, ScheduledPost.revision == row.revision, ScheduledPost.status == "scheduled")
+            .values(status="failed", last_error=str(exc), active_guard=None, updated_at=now)
+            .execution_options(synchronize_session=False)
+        )
+        post = db.get(ScheduledPost, row.id, populate_existing=True)
+        _history(db, post, "validation_failed", error=str(exc))
+        db.commit()
+        return True
+    post.publication_id = job.id
+    _history(db, post, "queued", publication_id=str(job.id), revision=post.revision)
+    db.commit()
+    enqueue_publication(job.id)
+    return True
+
+
 def schedule_due_posts(db: DBSession, *, now: datetime | None = None, limit: int = 50) -> int:
     """Turn due scheduled posts into publishing jobs. Safe to run concurrently."""
     now = now or utc_now()
@@ -401,79 +479,26 @@ def schedule_due_posts(db: DBSession, *, now: datetime | None = None, limit: int
     )
     handled = 0
     for row in rows:
-        claimed = db.execute(
-            update(ScheduledPost)
-            .where(
-                ScheduledPost.id == row.id,
-                ScheduledPost.status == "scheduled",
-                ScheduledPost.revision == row.revision,
-                ScheduledPost.scheduled_at <= now,
-            )
-            .values(status="queued", queued_at=now, updated_at=now)
-            .execution_options(synchronize_session=False)
-        )
-        if claimed.rowcount != 1:
-            db.rollback()
-            continue
-        post = db.get(ScheduledPost, row.id, populate_existing=True)
-        handled += 1
-        lateness = (now - ensure_utc(post.scheduled_at)).total_seconds()
-        if lateness > settings.schedule_max_lateness_seconds:
-            _fail_due_post(
-                db,
-                post,
-                f"Missed the publishing window: the scheduler was unavailable for {int(lateness // 60)} minutes "
-                "after the scheduled time. Reschedule the post.",
-                "missed",
-            )
-            db.commit()
-            continue
-
-        draft = db.get(ContentDraft, post.draft_id)
-        account = db.get(SocialAccount, post.social_account_id)
-        if draft is None or account is None:
-            _fail_due_post(db, post, "The content or social account was deleted.", "validation_failed")
-            db.commit()
-            continue
-        report = evaluate_eligibility(
-            db,
-            draft=draft,
-            account=account,
-            exclude_schedule_id=post.id,
-            expected_version=post.content_version_number,
-        )
-        if not report.eligible:
-            _fail_due_post(db, post, "Publishing was blocked: " + " ".join(report.errors), "validation_failed")
-            db.commit()
-            continue
         try:
-            job, _created = publishing.create_publication(
-                db,
-                draft=draft,
-                account=account,
-                report=report,
-                requested_by=post.updated_by or post.created_by,
-                idempotency_key=f"schedule:{post.id}:{post.revision}",
-                source="schedule",
-                enqueue=False,
-                commit=False,
-            )
-        except publishing.PublishingConflict as exc:
-            # create_publication rolled back the claim; record the failure atomically.
+            if _schedule_one(db, row, now, settings):
+                handled += 1
+        except Exception as exc:  # noqa: BLE001 - one bad post must not block the others
+            db.rollback()
+            report_error("publishing", "A due scheduled post could not be queued", exc, scheduled_post_id=str(row.id))
+            # Take the post out of the due set so it is not retried every tick.
             db.execute(
                 update(ScheduledPost)
-                .where(ScheduledPost.id == row.id, ScheduledPost.revision == row.revision, ScheduledPost.status == "scheduled")
-                .values(status="failed", last_error=str(exc), active_guard=None, updated_at=now)
+                .where(ScheduledPost.id == row.id, ScheduledPost.status.in_(("scheduled", "queued")), ScheduledPost.publication_id.is_(None))
+                .values(
+                    status="failed",
+                    last_error="The post could not be queued because of an unexpected error. Reschedule it or contact support.",
+                    active_guard=None,
+                    updated_at=now,
+                )
                 .execution_options(synchronize_session=False)
             )
-            post = db.get(ScheduledPost, row.id, populate_existing=True)
-            _history(db, post, "validation_failed", error=str(exc))
             db.commit()
-            continue
-        post.publication_id = job.id
-        _history(db, post, "queued", publication_id=str(job.id), revision=post.revision)
-        db.commit()
-        enqueue_publication(job.id)
+            handled += 1
     return handled
 
 
@@ -515,6 +540,26 @@ def sync_from_publication(db: DBSession, job: ContentPublication) -> None:
         post.cancelled_at = job.cancelled_at or utc_now()
         post.active_guard = None
         _history(db, post, "cancelled")
+
+def reconcile_scheduled_posts(db: DBSession, *, limit: int = 100) -> int:
+    """Repair scheduled posts whose publishing job finished but whose own status
+    was not updated (the completion hook runs after the job commit, so a crash
+    between the two leaves the post "queued" or "processing" forever)."""
+    rows = (
+        db.query(ScheduledPost, ContentPublication)
+        .join(ContentPublication, ContentPublication.id == ScheduledPost.publication_id)
+        .filter(
+            ScheduledPost.status.in_(("queued", "processing")),
+            ContentPublication.status.in_(("published", "failed", "cancelled")),
+        )
+        .limit(limit)
+        .all()
+    )
+    for _post, job in rows:
+        sync_from_publication(db, job)
+    if rows:
+        db.commit()
+    return len(rows)
 
 
 def display_local(post: ScheduledPost, tz_name: str | None = None) -> str:

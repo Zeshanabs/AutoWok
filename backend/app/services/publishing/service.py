@@ -33,6 +33,8 @@ from app.services.meta_graph import MetaGraphError
 from app.services.publishing import errors as E
 from app.services.publishing.eligibility import EligibilityReport, evaluate_eligibility, publication_guard
 from app.services.publishing.meta_publisher import (
+    STAGE_DONE,
+    PublishResult,
     STAGE_PUBLISHING,
     MetaPublisher,
     PublishContext,
@@ -175,7 +177,9 @@ def due_publication_ids(db: DBSession, *, now: datetime | None = None, limit: in
     rows = (
         db.query(ContentPublication.id)
         .filter(claimable_condition(now))
-        .order_by(ContentPublication.next_attempt_at.asc(), ContentPublication.created_at.asc())
+        # NULLS FIRST: jobs that were never attempted must not queue behind retries
+        # (PostgreSQL sorts NULL last by default, SQLite first).
+        .order_by(ContentPublication.next_attempt_at.asc().nulls_first(), ContentPublication.created_at.asc())
         .limit(limit)
         .all()
     )
@@ -275,6 +279,41 @@ def _run_hooks(db: DBSession, job: ContentPublication) -> None:
     db.commit()
 
 
+class LeaseLost(Exception):
+    """This worker no longer owns the job (its lease expired and was taken over)."""
+
+
+def _finish_published(db: DBSession, job: ContentPublication, attempt: PublishingAttempt, result: PublishResult) -> str:
+    finished = utc_now()
+    job.status = "published"
+    job.external_post_id = result.external_post_id or job.external_post_id
+    job.permalink = result.permalink or job.permalink
+    job.platform_response = {**(job.platform_response or {}), **result.summary}
+    job.published_at = finished
+    job.completed_at = finished
+    job.error_category = None
+    job.error_code = None
+    job.error_message = None
+    job.requires_user_action = False
+    job.outcome_uncertain = False
+    job.locked_by = None
+    job.lease_expires_at = None
+    attempt.status = "succeeded"
+    attempt.finished_at = finished
+    attempt.response_summary = result.summary
+    record_audit(
+        db,
+        action="publishing.published",
+        resource_type="content_publication",
+        workspace_id=job.workspace_id,
+        resource_id=job.id,
+        metadata={"platform": job.platform, "external_post_id": job.external_post_id},
+    )
+    db.commit()
+    _run_hooks(db, job)
+    return job.status
+
+
 def process_publication(
     db: DBSession,
     publication_id: UUID,
@@ -295,6 +334,21 @@ def process_publication(
     if job is None:
         return None
     current_time = now or utc_now()
+    recovered = previous_status in {"processing", "publishing"}
+    if recovered:
+        # The previous worker stopped without finishing: close its attempt record.
+        db.query(PublishingAttempt).filter(
+            PublishingAttempt.publication_id == job.id, PublishingAttempt.status == "running"
+        ).update(
+            {
+                PublishingAttempt.status: "failed",
+                PublishingAttempt.error_category: E.NETWORK,
+                PublishingAttempt.error_code: "worker_interrupted",
+                PublishingAttempt.error_message: "The worker stopped before this attempt finished.",
+                PublishingAttempt.finished_at: current_time,
+            },
+            synchronize_session=False,
+        )
     job.attempt_count += 1
     job.started_at = job.started_at or current_time
     attempt = PublishingAttempt(
@@ -315,11 +369,41 @@ def process_publication(
             logger.exception("Publishing start hook failed for job %s", job.id)
             db.rollback()
 
-    recovered_from_publish = previous_status in {"processing", "publishing"} and job.stage == STAGE_PUBLISHING
+    if recovered and job.platform != "instagram" and job.stage == STAGE_DONE and job.external_post_id:
+        # The post was created and its id stored, but the worker stopped before
+        # the job was marked published. Finish the bookkeeping; never post again.
+        return _finish_published(
+            db,
+            job,
+            attempt,
+            PublishResult(
+                job.external_post_id,
+                job.permalink or f"https://www.facebook.com/{job.external_post_id}",
+                {"id": job.external_post_id, "recovered": True},
+            ),
+        )
+
+    recovered_from_publish = recovered and job.stage == STAGE_PUBLISHING
     if recovered_from_publish and job.platform != "instagram":
         # A worker died after sending the final Facebook request. Meta may have
         # created the post, so this must not be retried automatically.
         _record_failure(db, job, attempt, E.classification(E.UNCERTAIN, code="worker_interrupted"), current_time)
+        db.commit()
+        _run_hooks(db, job)
+        return job.status
+
+    if recovered and job.attempt_count > job.max_attempts:
+        # A job that keeps being abandoned (for example it crashes the worker)
+        # must not be reclaimed forever.
+        _record_failure(
+            db, job, attempt,
+            E.classification(
+                E.PLATFORM_TEMPORARY,
+                "Publishing was interrupted repeatedly and has been stopped. Check the account, then retry.",
+                "attempts_exhausted",
+            ),
+            current_time,
+        )
         db.commit()
         _run_hooks(db, job)
         return job.status
@@ -366,9 +450,21 @@ def process_publication(
         return job.status
 
     def checkpoint() -> None:
+        # Renew the lease only while this worker still owns the job. If the lease
+        # expired and another worker claimed it, stop here without writing.
+        lease = utc_now() + timedelta(seconds=get_settings().publishing_lease_seconds)
+        owned = db.execute(
+            update(ContentPublication)
+            .where(ContentPublication.id == job.id, ContentPublication.locked_by == worker_id)
+            .values(lease_expires_at=lease)
+            .execution_options(synchronize_session=False)
+        )
+        if owned.rowcount != 1:
+            db.rollback()
+            raise LeaseLost()
         if job.stage == STAGE_PUBLISHING:
             job.status = "publishing"
-        job.lease_expires_at = utc_now() + timedelta(seconds=get_settings().publishing_lease_seconds)
+        job.lease_expires_at = lease
         attempt.stage = job.stage
         db.commit()
 
@@ -393,8 +489,16 @@ def process_publication(
     publisher = publisher or MetaPublisher()
     try:
         result = publisher.publish(ctx)
+    except LeaseLost:
+        logger.warning("Lease lost while publishing; another worker owns the job now.")
+        return None
     except PublishFailure as failure:
-        _record_failure(db, job, attempt, failure.failure, utc_now())
+        classified = failure.failure
+        if classified.code == "bad_response" and job.stage == STAGE_PUBLISHING and job.platform != "instagram":
+            # Meta accepted the final request but answered without an id. The post
+            # may exist, so this is an uncertain outcome, not a retryable one.
+            classified = E.classification(E.UNCERTAIN, code="bad_response")
+        _record_failure(db, job, attempt, classified, utc_now())
         db.commit()
         _run_hooks(db, job)
         return job.status
@@ -410,34 +514,7 @@ def process_publication(
         _run_hooks(db, job)
         return job.status
 
-    finished = utc_now()
-    job.status = "published"
-    job.external_post_id = result.external_post_id or job.external_post_id
-    job.permalink = result.permalink or job.permalink
-    job.platform_response = {**(job.platform_response or {}), **result.summary}
-    job.published_at = finished
-    job.completed_at = finished
-    job.error_category = None
-    job.error_code = None
-    job.error_message = None
-    job.requires_user_action = False
-    job.outcome_uncertain = False
-    job.locked_by = None
-    job.lease_expires_at = None
-    attempt.status = "succeeded"
-    attempt.finished_at = finished
-    attempt.response_summary = result.summary
-    record_audit(
-        db,
-        action="publishing.published",
-        resource_type="content_publication",
-        workspace_id=job.workspace_id,
-        resource_id=job.id,
-        metadata={"platform": job.platform, "external_post_id": job.external_post_id},
-    )
-    db.commit()
-    _run_hooks(db, job)
-    return job.status
+    return _finish_published(db, job, attempt, result)
 
 
 # User actions ---------------------------------------------------------------

@@ -33,7 +33,6 @@ from typing import Any
 from uuid import UUID
 
 from sqlalchemy import and_, func, or_, select, update
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as DBSession
 
 from app.core.config import get_settings
@@ -318,7 +317,7 @@ def due_execution_ids(db: DBSession, *, now: datetime | None = None, limit: int 
     rows = (
         db.query(AutomationExecution.id)
         .filter(_execution_claimable(now))
-        .order_by(AutomationExecution.next_attempt_at.asc(), AutomationExecution.created_at.asc())
+        .order_by(AutomationExecution.next_attempt_at.asc().nulls_first(), AutomationExecution.created_at.asc())
         .limit(limit)
         .all()
     )

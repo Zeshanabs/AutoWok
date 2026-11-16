@@ -7,8 +7,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session as DBSession
 
 from app.api.v1.dependencies.auth import get_current_user
+from app.core.config import get_settings
 from app.db.session import get_db
-from app.integrations.research.services.citation_service import CitationValidationService
+from app.services.rate_limit import enforce_user_rate_limit
 from app.integrations.research.services.research_service import ResearchEngineService
 from app.models import Brand, ResearchFinding, ResearchProject, ResearchQuery, ResearchReport, ResearchSource, User, WorkspaceMembership
 from app.schemas.research import (
@@ -24,6 +25,16 @@ from app.schemas.research import (
 )
 
 router = APIRouter(tags=["research"])
+settings = get_settings()
+
+
+def _limit_research(current_user: User = Depends(get_current_user)) -> None:
+    enforce_user_rate_limit(
+        current_user.id,
+        action="research",
+        limit=settings.rate_limit_research_per_hour,
+        category="Research",
+    )
 
 
 def _workspace_membership(db: DBSession, user: User, workspace_id: UUID) -> WorkspaceMembership:
@@ -63,13 +74,13 @@ def _build_report_read(report: ResearchReport | None) -> ResearchReportRead | No
     return ResearchReportRead.model_validate(report)
 
 
-@router.post("/research", response_model=ResearchProjectRead, status_code=status.HTTP_201_CREATED)
+@router.post("/research", response_model=ResearchProjectRead, status_code=status.HTTP_201_CREATED, dependencies=[Depends(_limit_research)])
 def create_research_project(
     payload: ResearchProjectCreate,
     current_user: User = Depends(get_current_user),
     db: DBSession = Depends(get_db),
 ) -> ResearchProjectRead:
-    membership = _workspace_membership(db, current_user, payload.workspace_id)
+    _workspace_membership(db, current_user, payload.workspace_id)
     _validate_brand(db, payload.workspace_id, payload.brand_id)
     project = ResearchProject(
         workspace_id=payload.workspace_id,
@@ -104,6 +115,7 @@ def create_research_project(
     "/workspaces/{workspace_id}/research",
     response_model=ResearchProjectRead,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(_limit_research)],
 )
 def create_workspace_research_project(
     workspace_id: UUID,
@@ -208,7 +220,7 @@ def delete_research_project(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.post("/research/{research_id}/run", response_model=ResearchProjectRead)
+@router.post("/research/{research_id}/run", response_model=ResearchProjectRead, dependencies=[Depends(_limit_research)])
 def run_research_project(
     research_id: UUID,
     current_user: User = Depends(get_current_user),
@@ -231,7 +243,7 @@ def run_research_project(
         db.commit()
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
 
-    queries = service.create_queries(project)
+    service.create_queries(project)
     results = service.search(project)
     project.status = ResearchStatus.RETRIEVING.value
     project.current_stage = ResearchStatus.RETRIEVING.value

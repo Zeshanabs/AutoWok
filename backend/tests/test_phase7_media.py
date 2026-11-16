@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import re
 import time
 from uuid import UUID
 
@@ -192,7 +193,10 @@ def test_signed_public_media_urls_expire_and_reject_tampering(client):
     assert client.get(tampered).status_code == 403
     other_asset = upload(client, workspace_id, jpeg_bytes(41, 41), "other.jpg").json()
     assert client.get(path.replace(asset["id"], other_asset["id"])).status_code == 403
-    expired = path.replace(f"expires={int(time.time()) + 120}", f"expires={int(time.time()) - 5}")
+    # Rewrite the expiry found in the link itself (not one recomputed from the
+    # clock, which differs when a second boundary passes between the two calls).
+    expired = re.sub(r"expires=\d+", f"expires={int(time.time()) - 5}", path)
+    assert expired != path
     assert client.get(expired).status_code == 403
 
     access = client.post(f"/api/v1/media-assets/{asset['id']}/access-url", headers=CSRF)

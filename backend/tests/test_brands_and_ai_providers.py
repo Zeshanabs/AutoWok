@@ -7,7 +7,7 @@ from cryptography.fernet import Fernet
 import pytest
 import httpx
 
-from app.models import AIProviderConfig, AuditLog, Brand, TargetAudience
+from app.models import AIProviderConfig, AuditLog, Brand
 from app.schemas.brands import ProviderName, TargetAudienceUpdate
 from app.services.ai_encryption import decrypt_api_key, rotate_api_key
 from app.services.ai_providers import (

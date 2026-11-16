@@ -11,7 +11,7 @@ import redis
 from app.models import ContentPublication, ScheduledPost, SocialAccount
 from app.services import redis_client as redis_module
 from app.services.publishing import service as publishing_service
-from app.services.publishing.queue import READY_QUEUE_KEY, wait_for_publication
+from app.services.publishing.queue import wait_for_publication
 from app.services.scheduling import worker_tasks
 from app.services.scheduling.service import schedule_due_posts
 from app.services.scheduling.timezones import TimezoneError, calendar_range, local_to_utc, utc_to_local

@@ -127,7 +127,7 @@ export default function NotificationsPage() {
                 </div>
               </div>
               {!data ? (
-                <p className="mt-3 text-sm text-slate-500">Loading…</p>
+                <p role="status" className="mt-3 text-sm text-slate-500">Loading…</p>
               ) : data.items.length === 0 ? (
                 <p className="mt-3 text-sm text-slate-500">Nothing here.</p>
               ) : (

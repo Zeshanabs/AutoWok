@@ -16,6 +16,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session as DBSession
 
+from app.api.v1.dependencies import limits
 from app.api.v1.dependencies.auth import get_current_user, require_workspace_admin, require_workspace_member
 from app.core.config import get_settings
 from app.db.session import get_db
@@ -193,7 +194,7 @@ def get_catalog(
     return {"triggers": list_triggers(), "actions": A.list_actions(), "limits": _limits()}
 
 
-@router.post("/automations/validate", response_model=ValidationRead)
+@router.post("/automations/validate", response_model=ValidationRead, dependencies=[Depends(limits.automation_test)])
 def validate_automation(
     workspace_id: UUID,
     payload: AutomationCreate,
@@ -212,7 +213,7 @@ def validate_automation(
     return {"valid": normalized.valid, "errors": normalized.errors, "warnings": normalized.warnings}
 
 
-@router.post("/automations/dry-run", response_model=DryRunRead)
+@router.post("/automations/dry-run", response_model=DryRunRead, dependencies=[Depends(limits.automation_test)])
 def dry_run_definition(
     workspace_id: UUID,
     payload: DryRunDefinitionRequest,
@@ -442,7 +443,7 @@ def duplicate_automation(
     return automation_read(db, copy)
 
 
-@router.post("/automations/{automation_id}/dry-run", response_model=DryRunRead)
+@router.post("/automations/{automation_id}/dry-run", response_model=DryRunRead, dependencies=[Depends(limits.automation_test)])
 def dry_run_automation(
     workspace_id: UUID,
     automation_id: UUID,

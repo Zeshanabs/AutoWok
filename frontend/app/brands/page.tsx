@@ -68,7 +68,7 @@ export default function BrandsPage() {
             )}
             <section className="mt-7 space-y-3">
               {loading ? (
-                <p>Loading brands…</p>
+                <p role="status">Loading brands…</p>
               ) : brands.length === 0 ? (
                 <p className="rounded-xl border border-dashed border-slate-300 p-6 text-sm text-slate-600">
                   No brands in {selectedWorkspace.name} yet.

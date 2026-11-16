@@ -1,5 +1,6 @@
 "use client";
 
+import { pollWhileVisible } from "@/lib/polling";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
@@ -104,15 +105,15 @@ export default function WorkflowExecutionPage() {
   }, [path]);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => void load(), 0);
+    const timer = window.setTimeout(() => load(), 0);
     return () => window.clearTimeout(timer);
   }, [load]);
 
   const active = workflow ? isActive(workflow.status) : false;
   useEffect(() => {
     if (!active) return;
-    const timer = window.setInterval(() => void load(), 3000);
-    return () => window.clearInterval(timer);
+    const stopPolling = pollWhileVisible(() => load(), 3000);
+    return () => stopPolling();
   }, [active, load]);
 
   function open(next: Dialog, index: number | null = null) {
@@ -179,7 +180,7 @@ export default function WorkflowExecutionPage() {
         {!workspaceId ? (
           <p className="mt-6 rounded-xl border border-dashed border-slate-300 p-6 text-sm text-slate-600">Select a workspace.</p>
         ) : !loaded ? (
-          <p className="mt-6 text-sm text-slate-500">Loading the workflow…</p>
+          <p role="status" className="mt-6 text-sm text-slate-500">Loading the workflow…</p>
         ) : !workflow ? (
           <p className="mt-6 rounded-xl border border-dashed border-slate-300 p-6 text-sm text-slate-600">
             This workflow was not found in the selected workspace. <Link href="/dashboard/ai-agents/history" className="font-medium text-indigo-700">Back to history</Link>

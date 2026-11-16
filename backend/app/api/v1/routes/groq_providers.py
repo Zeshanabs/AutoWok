@@ -3,10 +3,11 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session as DBSession
 
+from app.api.v1.dependencies import limits
 from app.api.v1.dependencies.auth import (
     get_current_user,
     require_workspace_admin,
@@ -37,7 +38,7 @@ def groq_status(
     return GroqService(db, workspace_id).configuration_status()
 
 
-@router.get("/models")
+@router.get("/models", dependencies=[Depends(limits.provider_test)])
 def groq_models(
     workspace_id: UUID,
     membership: WorkspaceMembership = Depends(require_workspace_admin),
@@ -54,7 +55,7 @@ def groq_models(
         ) from exc
 
 
-@router.post("/test")
+@router.post("/test", dependencies=[Depends(limits.provider_test)])
 def test_groq_connection(
     workspace_id: UUID,
     payload: GroqTestRequest | None = None,

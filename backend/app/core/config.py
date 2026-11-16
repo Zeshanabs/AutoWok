@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import List, Literal
 from urllib.parse import urlsplit
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import Field, ValidationError, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _ROOT_ENV_FILE = Path(__file__).resolve().parents[3] / ".env"
@@ -146,6 +146,63 @@ class Settings(BaseSettings):
         default=6.0, ge=1, le=10, alias="AGENT_QUALITY_REVISION_THRESHOLD"
     )
 
+    # Phase 12: production operations ------------------------------------------------
+    service_name: str = Field(default="autowok-api", alias="SERVICE_NAME")
+    # "auto" = JSON in production, readable text elsewhere.
+    log_format: Literal["auto", "json", "text"] = Field(default="auto", alias="LOG_FORMAT")
+    # API documentation (/docs, /redoc, /openapi.json). Unset = on outside production, off in production.
+    api_docs_enabled: bool | None = Field(default=None, alias="API_DOCS_ENABLED")
+    # Comma-separated Host header allowlist; empty disables the check (the reverse proxy should enforce it).
+    allowed_hosts: str = Field(default="", alias="ALLOWED_HOSTS")
+    # Database connection pool (per process)
+    db_pool_size: int = Field(default=5, ge=1, le=100, alias="DB_POOL_SIZE")
+    db_max_overflow: int = Field(default=10, ge=0, le=200, alias="DB_MAX_OVERFLOW")
+    db_pool_timeout_seconds: float = Field(default=30, gt=0, le=300, alias="DB_POOL_TIMEOUT_SECONDS")
+    db_pool_recycle_seconds: int = Field(default=1800, ge=-1, le=86400, alias="DB_POOL_RECYCLE_SECONDS")
+    db_connect_timeout_seconds: int = Field(default=5, ge=1, le=120, alias="DB_CONNECT_TIMEOUT_SECONDS")
+    # 0 disables the server-side statement timeout.
+    db_statement_timeout_ms: int = Field(default=30000, ge=0, le=3600000, alias="DB_STATEMENT_TIMEOUT_MS")
+    redis_socket_timeout_seconds: float = Field(default=5, gt=0, le=120, alias="REDIS_SOCKET_TIMEOUT_SECONDS")
+    # Sessions: how often last_used_at is written (0 = every request).
+    session_touch_interval_seconds: int = Field(default=300, ge=0, le=86400, alias="SESSION_TOUCH_INTERVAL_SECONDS")
+    # Request bodies other than media uploads
+    max_request_body_bytes: int = Field(default=1024 * 1024, ge=1024, alias="MAX_REQUEST_BODY_BYTES")
+    upload_max_concurrent: int = Field(default=4, ge=1, le=64, alias="UPLOAD_MAX_CONCURRENT")
+    # Monitoring
+    metrics_enabled: bool = Field(default=True, alias="METRICS_ENABLED")
+    # Bearer token required by /metrics and /api/v1/health/details. Required in production when metrics are on.
+    metrics_token: str = Field(default="", alias="METRICS_TOKEN")
+    # Optional Sentry-compatible DSN. Empty = errors are reported to the structured log only.
+    sentry_dsn: str = Field(default="", alias="SENTRY_DSN")
+    release_version: str = Field(default="", alias="RELEASE_VERSION")
+    # Worker
+    worker_heartbeat_file: str = Field(default="", alias="WORKER_HEARTBEAT_FILE")
+    worker_heartbeat_ttl_seconds: int = Field(default=120, ge=15, le=3600, alias="WORKER_HEARTBEAT_TTL_SECONDS")
+    # Periodic tasks stop starting new work after this many seconds in one loop, so due posts are not delayed.
+    worker_task_budget_seconds: float = Field(default=120, ge=5, le=3600, alias="WORKER_TASK_BUDGET_SECONDS")
+    worker_housekeeping_interval_seconds: float = Field(
+        default=60, ge=1, le=3600, alias="WORKER_HOUSEKEEPING_INTERVAL_SECONDS"
+    )
+    # Rate limits, per user and per hour unless the name says otherwise.
+    rate_limit_login_per_account_15m: int = Field(default=20, ge=1, le=1000, alias="RATE_LIMIT_LOGIN_PER_ACCOUNT_15M")
+    rate_limit_ai_generate_per_hour: int = Field(default=30, ge=1, le=10000, alias="RATE_LIMIT_AI_GENERATE_PER_HOUR")
+    rate_limit_ai_tools_per_hour: int = Field(default=120, ge=1, le=10000, alias="RATE_LIMIT_AI_TOOLS_PER_HOUR")
+    rate_limit_research_per_hour: int = Field(default=30, ge=1, le=10000, alias="RATE_LIMIT_RESEARCH_PER_HOUR")
+    rate_limit_upload_per_hour: int = Field(default=120, ge=1, le=10000, alias="RATE_LIMIT_UPLOAD_PER_HOUR")
+    rate_limit_publish_per_hour: int = Field(default=60, ge=1, le=10000, alias="RATE_LIMIT_PUBLISH_PER_HOUR")
+    rate_limit_schedule_per_hour: int = Field(default=240, ge=1, le=10000, alias="RATE_LIMIT_SCHEDULE_PER_HOUR")
+    rate_limit_export_per_hour: int = Field(default=30, ge=1, le=10000, alias="RATE_LIMIT_EXPORT_PER_HOUR")
+    rate_limit_member_add_per_hour: int = Field(default=20, ge=1, le=10000, alias="RATE_LIMIT_MEMBER_ADD_PER_HOUR")
+    rate_limit_provider_test_per_hour: int = Field(default=30, ge=1, le=10000, alias="RATE_LIMIT_PROVIDER_TEST_PER_HOUR")
+    rate_limit_automation_test_per_hour: int = Field(
+        default=120, ge=1, le=10000, alias="RATE_LIMIT_AUTOMATION_TEST_PER_HOUR"
+    )
+    rate_limit_client_errors_per_hour: int = Field(default=60, ge=1, le=10000, alias="RATE_LIMIT_CLIENT_ERRORS_PER_HOUR")
+    rate_limit_workspace_create_per_day: int = Field(
+        default=10, ge=1, le=1000, alias="RATE_LIMIT_WORKSPACE_CREATE_PER_DAY"
+    )
+    max_workspaces_per_user: int = Field(default=25, ge=1, le=10000, alias="MAX_WORKSPACES_PER_USER")
+
     model_config = SettingsConfigDict(
         env_file=_ROOT_ENV_FILE,
         env_file_encoding="utf-8",
@@ -191,8 +248,67 @@ class Settings(BaseSettings):
         return ",".join(normalized_origins)
 
     @property
+    def is_production(self) -> bool:
+        return self.app_env.lower() in {"production", "prod"}
+
+    @property
+    def docs_enabled(self) -> bool:
+        return (not self.is_production) if self.api_docs_enabled is None else self.api_docs_enabled
+
+    @property
+    def use_json_logs(self) -> bool:
+        return self.log_format == "json" or (self.log_format == "auto" and self.is_production)
+
+    @property
+    def allowed_hosts_list(self) -> list[str]:
+        return [host.strip().lower() for host in self.allowed_hosts.split(",") if host.strip()]
+
+    def production_problems(self) -> list[str]:
+        """Settings that are unsafe for production. Only names are reported, never values."""
+        from cryptography.fernet import Fernet
+
+        def fernet_ok(value: str) -> bool:
+            try:
+                Fernet(value.strip().encode("ascii"))
+                return True
+            except (ValueError, UnicodeEncodeError):
+                return False
+
+        problems: list[str] = []
+        if self.app_debug:
+            problems.append("APP_DEBUG must be false")
+        try:
+            password = urlsplit(self.database_url).password
+        except ValueError:
+            password = None
+        if not password or password in {"autowok", "postgres", "password", "changeme"}:
+            problems.append("DATABASE_URL must not use a default or empty password")
+        if any(not origin.startswith("https://") for origin in self.cors_origins_list):
+            problems.append("CORS_ORIGINS must contain only https:// origins")
+        if not fernet_ok(self.ai_encryption_key):
+            problems.append("AI_ENCRYPTION_KEY must be a Fernet key")
+        if not fernet_ok(self.meta_token_encryption_key):
+            problems.append("TOKEN_ENCRYPTION_KEY must be a Fernet key")
+        if self.ai_encryption_key.strip() and self.ai_encryption_key.strip() == self.meta_token_encryption_key.strip():
+            problems.append("AI_ENCRYPTION_KEY and TOKEN_ENCRYPTION_KEY must be different keys")
+        if len(self.media_url_signing_secret.strip()) < 32:
+            problems.append("MEDIA_URL_SIGNING_SECRET must be at least 32 characters")
+        if self.meta_app_id.strip():
+            if not self.meta_app_secret.strip():
+                problems.append("META_APP_SECRET is required when META_APP_ID is set")
+            if len(self.meta_oauth_state_secret.strip()) < 32:
+                problems.append("META_OAUTH_STATE_SECRET must be at least 32 characters")
+            if not self.meta_redirect_uri.startswith("https://"):
+                problems.append("META_REDIRECT_URI must be an https:// URL")
+        if self.metrics_enabled and len(self.metrics_token.strip()) < 24:
+            problems.append("METRICS_TOKEN must be at least 24 characters (or set METRICS_ENABLED=false)")
+        if self.session_cookie_samesite == "none":
+            problems.append("SESSION_COOKIE_SAMESITE must be lax or strict")
+        return problems
+
+    @property
     def secure_cookies(self) -> bool:
-        return self.session_cookie_secure or self.app_env.lower() in {"production", "prod"}
+        return self.session_cookie_secure or self.is_production
 
     @field_validator("groq_api_base_url")
     @classmethod
@@ -269,9 +385,30 @@ class Settings(BaseSettings):
     def validate_cookie_security(self) -> "Settings":
         if self.session_cookie_samesite == "none" and not self.secure_cookies:
             raise ValueError("SameSite=None requires secure session cookies.")
+        if self.agent_lease_seconds <= self.agent_step_timeout_seconds:
+            raise ValueError("AGENT_LEASE_SECONDS must be greater than AGENT_STEP_TIMEOUT_SECONDS.")
+        if self.is_production:
+            problems = self.production_problems()
+            if problems:
+                # Fail closed: a production process must not start with unsafe configuration.
+                raise ValueError("Unsafe production configuration: " + "; ".join(problems) + ".")
         return self
+
+
+class ConfigurationError(RuntimeError):
+    """The environment configuration is invalid. The message names the settings
+    and the problem; it never contains a configured value."""
 
 
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    try:
+        return Settings()
+    except ValidationError as exc:
+        # Pydantic's own message echoes the input values, which include secrets.
+        problems = []
+        for error in exc.errors(include_input=False, include_url=False, include_context=False):
+            location = ".".join(str(part) for part in error.get("loc", ())).upper()
+            message = str(error.get("msg", "invalid value")).removeprefix("Value error, ")
+            problems.append(f"{location}: {message}" if location else message)
+        raise ConfigurationError("Invalid configuration. " + " | ".join(problems)) from None

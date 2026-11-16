@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, JSON, String, Text, UniqueConstraint, Uuid
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, JSON, String, Text, UniqueConstraint, Uuid, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.session import Base
@@ -16,6 +16,8 @@ class ContentProject(Base):
     __table_args__ = (
         Index("ix_content_projects_workspace_status", "workspace_id", "status"),
         Index("ix_content_projects_brand_created", "brand_id", "created_at"),
+        # Serves the paginated project list (workspace filter, newest first).
+        Index("ix_content_projects_workspace_created", "workspace_id", "created_at"),
     )
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
@@ -72,7 +74,6 @@ class ContentDraft(Base):
     __tablename__ = "content_drafts"
     __table_args__ = (
         Index("ix_content_drafts_project_status", "project_id", "status"),
-        Index("ix_content_drafts_platform", "project_id", "platform"),
         UniqueConstraint("project_id", "platform", name="uq_content_draft_project_platform"),
     )
 
@@ -114,7 +115,6 @@ class ContentPublication(Base):
     __tablename__ = "content_publications"
     __table_args__ = (
         Index("ix_content_publications_project_status", "project_id", "status"),
-        Index("ix_content_publications_account", "social_account_id"),
         Index("ix_content_publications_workspace_created", "workspace_id", "created_at"),
         Index("ix_content_publications_due", "status", "next_attempt_at"),
         UniqueConstraint("workspace_id", "idempotency_key", name="uq_content_publication_idempotency"),
@@ -212,7 +212,6 @@ class PublishingAttempt(Base):
 class ContentVersion(Base):
     __tablename__ = "content_versions"
     __table_args__ = (
-        Index("ix_content_versions_draft_number", "draft_id", "version_number"),
         UniqueConstraint("draft_id", "version_number", name="uq_content_version_draft_number"),
     )
 
@@ -239,6 +238,13 @@ class ContentApproval(Base):
     __tablename__ = "content_approvals"
     __table_args__ = (
         Index("ix_content_approvals_project_status", "project_id", "status"),
+        # Serves the approval-reminder scan (pending approvals by age).
+        Index(
+            "ix_content_approvals_pending_created",
+            "created_at",
+            postgresql_where=text("status = 'pending'"),
+            sqlite_where=text("status = 'pending'"),
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)

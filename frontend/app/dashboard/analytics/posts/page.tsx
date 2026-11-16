@@ -139,9 +139,9 @@ function ComparePanel({ ids, onClear }: { ids: string[]; onClear: () => void }) 
             <table className="w-full min-w-[560px] text-left text-sm">
               <thead className="text-xs text-slate-500">
                 <tr>
-                  <th className="py-2 pr-3">Metric</th>
+                  <th scope="col" className="py-2 pr-3">Metric</th>
                   {data.posts.map((post) => (
-                    <th key={post.id} className="py-2 pr-3">
+                    <th scope="col" key={post.id} className="py-2 pr-3">
                       <span className="flex items-center gap-1 font-medium text-slate-700">
                         <span aria-hidden className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: PLATFORM_COLORS[post.platform] }} />
                         {(post.caption_preview ?? post.external_post_id).slice(0, 32)}
@@ -270,7 +270,7 @@ export default function AnalyticsPostsPage() {
             {error}
           </p>
         )}
-        {!data && loading && <p className="mt-3 text-sm text-slate-500">Loading posts…</p>}
+        {!data && loading && <p role="status" className="mt-3 text-sm text-slate-500">Loading posts…</p>}
         {data && (
           <div className={loading ? "mt-3 opacity-60 transition-opacity" : "mt-3"}>
             <PostTable posts={data.items} selectable selected={selected} onToggle={toggle} onOpen={setOpen} />

@@ -11,7 +11,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, JSON, String, Text, UniqueConstraint, Uuid
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, JSON, String, Text, UniqueConstraint, Uuid, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.session import Base
@@ -52,6 +52,7 @@ class AgentWorkflow(Base):
     __table_args__ = (
         Index("ix_agent_workflows_workspace_created", "workspace_id", "created_at"),
         Index("ix_agent_workflows_due", "status", "next_attempt_at"),
+        Index("ix_agent_workflows_accepted_project", "accepted_project_id", postgresql_where=text("accepted_project_id IS NOT NULL"), sqlite_where=text("accepted_project_id IS NOT NULL")),
         CheckConstraint(
             "status IN ('pending', 'running', 'succeeded', 'failed', 'cancelled')",
             name="ck_agent_workflow_status",

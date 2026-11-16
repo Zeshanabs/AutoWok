@@ -91,7 +91,7 @@ export default function BrandOverviewPage() {
           </p>
         )}
         {loading ? (
-          <p>Loading brand…</p>
+          <p role="status">Loading brand…</p>
         ) : overview ? (
           <>
             <p className="text-sm font-medium text-indigo-700">Brand setup</p>

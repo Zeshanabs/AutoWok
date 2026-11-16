@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
@@ -12,7 +11,9 @@ from app.api.v1.dependencies.auth import (
     require_workspace_admin,
     require_workspace_member,
 )
+from app.core.config import get_settings
 from app.db.session import get_db
+from app.services.rate_limit import enforce_user_rate_limit
 from app.models import User, Workspace, WorkspaceMembership
 from app.schemas.workspaces import (
     WorkspaceCreate,
@@ -27,6 +28,7 @@ from app.services.audit import record_audit
 from app.services.identity import generate_workspace_slug, normalize_email
 
 router = APIRouter(prefix="/workspaces", tags=["workspaces"])
+settings = get_settings()
 
 
 def _workspace_detail(workspace: Workspace) -> WorkspaceDetail:
@@ -56,6 +58,21 @@ def create_workspace(
     current_user: User = Depends(get_current_user),
     db: DBSession = Depends(get_db),
 ) -> WorkspaceDetail:
+    # Per-workspace limits (AI workflows, automations) multiply with the number
+    # of workspaces, so the number a user can create is bounded too.
+    enforce_user_rate_limit(
+        current_user.id,
+        action="workspace-create",
+        limit=settings.rate_limit_workspace_create_per_day,
+        window_seconds=86400,
+        category="Workspace creation",
+    )
+    owned = db.query(Workspace.id).filter(Workspace.owner_id == current_user.id).count()
+    if owned >= settings.max_workspaces_per_user:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"You can own at most {settings.max_workspaces_per_user} workspaces.",
+        )
     workspace = Workspace(
         name=payload.name,
         slug=generate_workspace_slug(payload.name),
@@ -155,6 +172,13 @@ def add_member(
 ) -> WorkspaceMemberRead:
     if payload.role == WorkspaceRole.OWNER:
         raise HTTPException(status_code=400, detail="Ownership transfer is not supported.")
+    # Adding by email reveals whether an account exists; keep probing slow.
+    enforce_user_rate_limit(
+        current_user.id,
+        action="member-add",
+        limit=settings.rate_limit_member_add_per_hour,
+        category="Member management",
+    )
     email = normalize_email(str(payload.email))
     user = db.query(User).filter(User.email == email).first()
     if user is None:

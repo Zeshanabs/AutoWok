@@ -145,7 +145,7 @@ export default function WorkspaceDetailsPage() {
     <ProtectedPage>
       <AppShell>
         {loading ? (
-          <p>Loading workspace…</p>
+          <p role="status">Loading workspace…</p>
         ) : error && !workspace ? (
           <p role="alert" className="rounded-xl bg-red-50 p-4 text-red-800">
             {error}
@@ -269,6 +269,8 @@ export default function WorkspaceDetailsPage() {
                 <div className="mt-4 flex flex-col gap-3 sm:flex-row">
                   <input
                     type="email"
+                    aria-label="Member email"
+                    autoComplete="off"
                     value={email}
                     onChange={(event) => setEmail(event.target.value)}
                     placeholder="member@example.com"
@@ -276,6 +278,7 @@ export default function WorkspaceDetailsPage() {
                     className="min-w-0 flex-1 rounded-xl border border-slate-300 px-3 py-2"
                   />
                   <select
+                    aria-label="Role for the new member"
                     value={newRole}
                     onChange={(event) => {
                       const role = manageableRole(event.target.value);

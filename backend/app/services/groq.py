@@ -9,6 +9,7 @@ from uuid import UUID
 import httpx
 from sqlalchemy.orm import Session as DBSession
 
+from app.core import metrics
 from app.core.config import Settings, get_settings
 from app.models import AIProviderConfig
 from app.services.ai_encryption import EncryptionNotConfigured, decrypt_api_key
@@ -276,6 +277,37 @@ class GroqService:
         return self._last_usage
 
     def _request(
+        self,
+        method: str,
+        path: str,
+        credential: GroqCredential,
+        *,
+        json: dict[str, Any] | None = None,
+        retry_transient: bool,
+    ) -> dict[str, Any]:
+        """Timed wrapper: records request count, latency, outcome and token usage."""
+        operation = "completion" if path.endswith("/chat/completions") else path.strip("/").replace("/", "_") or "request"
+        started = time.perf_counter()
+        outcome = "error"
+        usage: dict[str, Any] | None = None
+        try:
+            result = self._send(method, path, credential, json=json, retry_transient=retry_transient)
+            outcome = "ok"
+            usage = result.get("usage") if isinstance(result.get("usage"), dict) else None
+            return result
+        except GroqRateLimitError:
+            outcome = "rate_limited"
+            raise
+        except GroqTimeoutError:
+            outcome = "timeout"
+            raise
+        except GroqAuthenticationError:
+            outcome = "auth_error"
+            raise
+        finally:
+            metrics.observe_ai(operation, outcome, time.perf_counter() - started, usage)
+
+    def _send(
         self,
         method: str,
         path: str,

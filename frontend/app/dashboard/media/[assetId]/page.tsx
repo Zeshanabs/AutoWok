@@ -87,7 +87,7 @@ export default function MediaAssetPage() {
         {error && <p role="alert" className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-800">{error}</p>}
         {notice && <p role="status" className="mt-4 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800">{notice}</p>}
         {loadedId !== assetId ? (
-          <p className="mt-6 text-sm text-slate-500">Loading media…</p>
+          <p role="status" className="mt-6 text-sm text-slate-500">Loading media…</p>
         ) : asset ? (
           <div className="mt-6 grid gap-6 lg:grid-cols-[3fr_2fr]">
             <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">

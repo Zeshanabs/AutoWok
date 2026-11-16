@@ -22,7 +22,6 @@ from app.api.v1.dependencies.auth import (
 from app.core.config import get_settings
 from app.db.session import get_db
 from app.models import (
-    AuditLog,
     Brand,
     MetaAuthorization,
     OAuthState,

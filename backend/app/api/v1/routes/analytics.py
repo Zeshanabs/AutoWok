@@ -15,6 +15,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy.orm import Session as DBSession
 
+from app.api.v1.dependencies import limits
 from app.api.v1.dependencies.auth import get_current_user, require_workspace_admin, require_workspace_member
 from app.core.config import get_settings
 from app.db.session import get_db
@@ -264,6 +265,7 @@ def get_content_performance_summary(
         request,
         action="analytics-summary",
         identity=f"{workspace_id}:{current_user.id}",
+        per_address=False,
         limit=10,
         window_seconds=3600,
         category="AI summary",
@@ -299,6 +301,7 @@ def request_analytics_sync(
         request,
         action="analytics-refresh",
         identity=f"{workspace_id}:{current_user.id}",
+        per_address=False,
         limit=settings.analytics_manual_refresh_limit_per_hour,
         window_seconds=3600,
         category="Analytics refresh",
@@ -372,7 +375,7 @@ def get_sync_history(
 # Reports -----------------------------------------------------------------------
 
 
-@router.get("/reports", response_model=ReportRead)
+@router.get("/reports", response_model=ReportRead, dependencies=[Depends(limits.export)])
 def get_report(
     workspace_id: UUID,
     start: date | None = None,
@@ -387,7 +390,7 @@ def get_report(
     return R.build_report(db, filters)
 
 
-@router.get("/reports/export")
+@router.get("/reports/export", dependencies=[Depends(limits.export)])
 def export_report(
     workspace_id: UUID,
     format: str = Query(pattern="^(csv|pdf)$"),

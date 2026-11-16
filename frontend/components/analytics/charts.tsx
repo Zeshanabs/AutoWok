@@ -10,8 +10,8 @@ import { formatDay, formatNumber, niceTicks } from "@/lib/analytics-format";
  * platform, never the position in the list.
  */
 export const VIZ_STYLE = `
-.viz-root { --surface-1: #ffffff; --text-primary: #0b0b0b; --text-secondary: #52514e; --text-muted: #898781;
-  --series-1: #2a78d6; --series-2: #eb6834; --series-3: #1baf7a; --series-4: #eda100; --grid: #e1e0d9; --axis: #c3c2b7; }
+.viz-root { --surface-1: #ffffff; --text-primary: #0b0b0b; --text-secondary: #52514e; --text-muted: #6b6963;
+  --series-1: #2a78d6; --series-2: #eb6834; --series-3: #12855c; --series-4: #b37a00; --grid: #e1e0d9; --axis: #c3c2b7; }
 `;
 
 export type ChartSeries = {
@@ -59,7 +59,7 @@ export function ChartCard({ title, metricName, rangeLabel, unit, definition, loa
           {error}
         </p>
       ) : loading && !hasPreviousData ? (
-        <p className="mt-4 text-sm text-slate-500">Loading chart…</p>
+        <p role="status" className="mt-4 text-sm text-slate-500">Loading chart…</p>
       ) : empty ? (
         <p className="mt-4 rounded-lg bg-slate-50 p-3 text-sm text-slate-600">{emptyMessage ?? "No data is available for this range."}</p>
       ) : (
@@ -221,9 +221,9 @@ export function LineChart({ series, unit = "count", ariaLabel }: LineChartProps)
         <caption className="sr-only">{ariaLabel}</caption>
         <thead>
           <tr>
-            <th className="py-1 pr-2 font-medium text-slate-600">Date</th>
+            <th scope="col" className="py-1 pr-2 font-medium text-slate-600">Date</th>
             {series.map((entry) => (
-              <th key={entry.key} className="py-1 pr-2 font-medium text-slate-600">
+              <th scope="col" key={entry.key} className="py-1 pr-2 font-medium text-slate-600">
                 {entry.label}
               </th>
             ))}
@@ -282,8 +282,8 @@ export function BarChart({ items, unit = "count", ariaLabel }: { items: BarItem[
         <caption className="sr-only">{ariaLabel}</caption>
         <thead>
           <tr>
-            <th className="py-1 pr-2 font-medium text-slate-600">Item</th>
-            <th className="py-1 pr-2 font-medium text-slate-600">Value</th>
+            <th scope="col" className="py-1 pr-2 font-medium text-slate-600">Item</th>
+            <th scope="col" className="py-1 pr-2 font-medium text-slate-600">Value</th>
           </tr>
         </thead>
         <tbody>

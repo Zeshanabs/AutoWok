@@ -15,7 +15,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, JSON, String, Text, UniqueConstraint, Uuid
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, JSON, String, Text, UniqueConstraint, Uuid, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.session import Base
@@ -109,6 +109,7 @@ class AutomationEvent(Base):
         Index("ix_automation_events_due", "status", "next_attempt_at"),
         Index("ix_automation_events_workspace_occurred", "workspace_id", "occurred_at"),
         Index("ix_automation_events_type_occurred", "workspace_id", "event_type", "occurred_at"),
+        Index("ix_automation_events_origin_automation", "origin_automation_id", postgresql_where=text("origin_automation_id IS NOT NULL"), sqlite_where=text("origin_automation_id IS NOT NULL")),
         UniqueConstraint("dedupe_key", name="uq_automation_event_dedupe"),
         CheckConstraint("status IN ('pending', 'processing', 'processed', 'failed')", name="ck_automation_event_status"),
     )
@@ -197,6 +198,7 @@ class AutomationExecutionStep(Base):
     __tablename__ = "automation_execution_steps"
     __table_args__ = (
         UniqueConstraint("execution_id", "execution_order", name="uq_automation_step_order"),
+        Index("ix_automation_execution_steps_action", "action_id", postgresql_where=text("action_id IS NOT NULL"), sqlite_where=text("action_id IS NOT NULL")),
         CheckConstraint(
             "status IN ('pending', 'running', 'succeeded', 'failed', 'skipped')",
             name="ck_automation_step_status",
@@ -229,6 +231,8 @@ class Notification(Base):
     __table_args__ = (
         Index("ix_notifications_user_workspace_created", "user_id", "workspace_id", "created_at"),
         Index("ix_notifications_user_unread", "user_id", "read_at"),
+        Index("ix_notifications_execution", "execution_id", postgresql_where=text("execution_id IS NOT NULL"), sqlite_where=text("execution_id IS NOT NULL")),
+        Index("ix_notifications_automation", "automation_id", postgresql_where=text("automation_id IS NOT NULL"), sqlite_where=text("automation_id IS NOT NULL")),
         UniqueConstraint("dedupe_key", name="uq_notification_dedupe"),
     )
 
@@ -266,6 +270,9 @@ class ContentTask(Base):
     __table_args__ = (
         Index("ix_content_tasks_workspace_status_created", "workspace_id", "status", "created_at"),
         Index("ix_content_tasks_assignee_status", "assigned_to", "status"),
+        Index("ix_content_tasks_execution", "execution_id", postgresql_where=text("execution_id IS NOT NULL"), sqlite_where=text("execution_id IS NOT NULL")),
+        Index("ix_content_tasks_automation", "automation_id", postgresql_where=text("automation_id IS NOT NULL"), sqlite_where=text("automation_id IS NOT NULL")),
+        Index("ix_content_tasks_publication", "publication_id", postgresql_where=text("publication_id IS NOT NULL"), sqlite_where=text("publication_id IS NOT NULL")),
         UniqueConstraint("dedupe_key", name="uq_content_task_dedupe"),
         CheckConstraint("status IN ('open', 'done')", name="ck_content_task_status"),
     )

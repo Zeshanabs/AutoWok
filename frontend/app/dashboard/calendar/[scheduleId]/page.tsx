@@ -1,5 +1,6 @@
 "use client";
 
+import { pollWhileVisible } from "@/lib/polling";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
@@ -59,10 +60,10 @@ export default function ScheduleDetailPage() {
   const isActive = Boolean(post && ACTIVE.includes(post.status));
   useEffect(() => {
     if (!isActive) return;
-    const timer = window.setInterval(() => {
+    const stopPolling = pollWhileVisible(() => {
       void apiRequest<ScheduledPost>(`/scheduled-posts/${scheduleId}`).then(setPost).catch(() => undefined);
     }, 5000);
-    return () => window.clearInterval(timer);
+    return () => stopPolling();
   }, [isActive, scheduleId]);
 
   const act = async (path: string, body: unknown, success: string) => {
@@ -92,7 +93,7 @@ export default function ScheduleDetailPage() {
         {error && <p role="alert" className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-800">{error}</p>}
         {notice && <p role="status" className="mt-4 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800">{notice}</p>}
         {loadedId !== scheduleId ? (
-          <p className="mt-6 text-sm text-slate-500">Loading…</p>
+          <p role="status" className="mt-6 text-sm text-slate-500">Loading…</p>
         ) : post ? (
           <div className="mt-4 grid gap-6 lg:grid-cols-[3fr_2fr]">
             <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5">
@@ -136,7 +137,7 @@ export default function ScheduleDetailPage() {
                     <TimezoneSelect value={timezone} onChange={setTimezone} className="w-full" />
                   </div>
                   {error?.includes("happens twice") && (
-                    <div className="flex gap-4 text-sm">
+                    <div role="radiogroup" aria-label="Which occurrence of this time" className="flex gap-4 text-sm">
                       {(["earlier", "later"] as const).map((option) => (
                         <label key={option} className="inline-flex items-center gap-1.5">
                           <input type="radio" name="fold" checked={ambiguous === option} onChange={() => setAmbiguous(option)} /> {option}

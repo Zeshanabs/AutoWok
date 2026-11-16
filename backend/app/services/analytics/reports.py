@@ -10,6 +10,7 @@ explanation for every missing value.
 from __future__ import annotations
 
 import csv
+import re
 import io
 from datetime import datetime, timezone
 from typing import Any
@@ -100,9 +101,30 @@ def build_report(db: DBSession, filters: Q.AnalyticsFilters) -> dict[str, Any]:
     }
 
 
+_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+_NUMERIC_CELL = re.compile(r"^[+-]?\d[\d,.]*%?$")
+
+
+def csv_safe(value: Any) -> Any:
+    """Spreadsheet applications run cells that start with = + - @ as formulas.
+    Captions and account names come from users and from Meta, so such cells are
+    prefixed with an apostrophe (shown as text). Plain numbers are left alone."""
+    if isinstance(value, str) and value.startswith(_FORMULA_PREFIXES) and not _NUMERIC_CELL.match(value):
+        return "'" + value
+    return value
+
+
+class _SafeCsvWriter:
+    def __init__(self, writer: Any) -> None:
+        self._writer = writer
+
+    def writerow(self, row: list[Any]) -> None:
+        self._writer.writerow([csv_safe(cell) for cell in row])
+
+
 def render_csv(report: dict[str, Any]) -> str:
     buffer = io.StringIO()
-    writer = csv.writer(buffer, lineterminator="\n")
+    writer = _SafeCsvWriter(csv.writer(buffer, lineterminator="\n"))
     writer.writerow(["Autowok analytics report"])
     writer.writerow(["Generated at (UTC)", _fmt(report["generated_at"])])
     writer.writerow(["Period start", report["period"]["start"].isoformat(), "Period end", report["period"]["end"].isoformat(), "Days", report["period"]["days"]])

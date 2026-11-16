@@ -73,7 +73,7 @@ export default function AutomationsPage() {
         {!workspaceId ? (
           <p className="mt-6 rounded-xl border border-dashed border-slate-300 p-6 text-sm text-slate-600">Select a workspace.</p>
         ) : loading && items.length === 0 ? (
-          <p className="mt-6 text-sm text-slate-500">Loading automations…</p>
+          <p role="status" className="mt-6 text-sm text-slate-500">Loading automations…</p>
         ) : items.length === 0 ? (
           <p className="mt-6 rounded-xl border border-dashed border-slate-300 p-6 text-sm text-slate-600">
             No automations yet.{" "}

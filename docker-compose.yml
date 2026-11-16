@@ -1,3 +1,5 @@
+# Local development stack (source is bind-mounted, hot reload, ports published on
+# localhost). Do not use in production: see docker-compose.prod.yml and docs/deployment.md.
 services:
   postgres:
     image: postgres:16-alpine
@@ -8,7 +10,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-autowok}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-autowok}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -23,7 +25,7 @@ services:
     container_name: autowok-redis
     restart: unless-stopped
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     command: ["redis-server", "--appendonly", "yes"]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -36,6 +38,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+      target: dev
     container_name: autowok-backend
     restart: unless-stopped
     env_file:
@@ -71,6 +74,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+      target: dev
     container_name: autowok-worker
     restart: unless-stopped
     command: ["python", "-m", "app.worker"]
@@ -96,6 +100,7 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      target: dev
     container_name: autowok-frontend
     restart: unless-stopped
     env_file:

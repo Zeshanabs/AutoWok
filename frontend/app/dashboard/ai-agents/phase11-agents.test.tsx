@@ -13,6 +13,7 @@ import WorkflowExecutionPage from "./workflows/[workflowId]/page";
 
 const push = vi.fn();
 vi.mock("next/navigation", () => ({
+  usePathname: () => "/dashboard",
   useRouter: () => ({ replace: vi.fn(), push }),
   useParams: () => ({ workflowId: "wf-1" }),
 }));

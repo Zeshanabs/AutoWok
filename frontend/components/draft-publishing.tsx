@@ -1,5 +1,6 @@
 "use client";
 
+import { pollWhileVisible } from "@/lib/polling";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { ConfirmDialog } from "@/components/confirm-dialog";
@@ -7,7 +8,7 @@ import { MediaPicker } from "@/components/media-picker";
 import { MediaThumbnail } from "@/components/media-thumbnail";
 import { PostPreview } from "@/components/post-preview";
 import { StatusBadge } from "@/components/status-badge";
-import { ApiError, apiRequest, newIdempotencyKey } from "@/lib/api";
+import { ApiError, apiRequest, newIdempotencyKey, sharedGet } from "@/lib/api";
 import type { SocialAccount } from "@/lib/brand-types";
 import type { ContentDraft, ContentProject } from "@/lib/content-types";
 import {
@@ -61,8 +62,9 @@ export function DraftPublishing({ draft, project, role, disabled, onChanged }: P
   const fetchStatic = useCallback(
     () =>
       Promise.all([
-        apiRequest<MediaAsset[]>(`/media-assets?workspace_id=${workspaceId}&include_archived=true`),
-        apiRequest<SocialAccount[]>(`/workspaces/${workspaceId}/social-accounts`).catch(() => [] as SocialAccount[]),
+        // One draft card per platform mounts at the same time; they share these two requests.
+        sharedGet<MediaAsset[]>(`/media-assets?workspace_id=${workspaceId}&include_archived=true`),
+        sharedGet<SocialAccount[]>(`/workspaces/${workspaceId}/social-accounts`).catch(() => [] as SocialAccount[]),
       ]),
     [workspaceId],
   );
@@ -139,7 +141,7 @@ export function DraftPublishing({ draft, project, role, disabled, onChanged }: P
   const hasActiveJob = jobs.some((job) => ACTIVE_PUBLICATION_STATUSES.includes(job.status));
   useEffect(() => {
     if (!hasActiveJob) return;
-    const timer = window.setInterval(() => {
+    const stopPolling = pollWhileVisible(() => {
       void loadJobs()
         .then((data) => {
           if (!data.some((job) => ACTIVE_PUBLICATION_STATUSES.includes(job.status))) {
@@ -148,7 +150,7 @@ export function DraftPublishing({ draft, project, role, disabled, onChanged }: P
         })
         .catch(() => undefined);
     }, 3000);
-    return () => window.clearInterval(timer);
+    return () => stopPolling();
   }, [hasActiveJob, loadJobs, loadPreview]);
 
   const setMedia = async (ids: string[], success: string) => {
@@ -289,7 +291,7 @@ export function DraftPublishing({ draft, project, role, disabled, onChanged }: P
               <p className="text-xs text-slate-500">{preview.disclaimer}</p>
             </>
           ) : (
-            <p className="text-sm text-slate-500">Loading preview…</p>
+            <p role="status" className="text-sm text-slate-500">Loading preview…</p>
           )}
         </div>
 

@@ -308,7 +308,7 @@ export function BrandSectionPage({
           </p>
         )}
         {loading ? (
-          <p className="mt-6">Loading brand information…</p>
+          <p role="status" className="mt-6">Loading brand information…</p>
         ) : (
           <div className="mt-7 grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
             <section className="rounded-2xl border border-slate-200 bg-white p-6">

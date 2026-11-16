@@ -34,11 +34,11 @@ function AccountCard({ insights, rangeLabel }: { insights: AccountInsights; rang
           <caption className="sr-only">Account metrics for {account.display_name}</caption>
           <thead className="text-xs text-slate-500">
             <tr>
-              <th className="py-2 pr-3">Metric</th>
-              <th className="py-2 pr-3">Current period</th>
-              <th className="py-2 pr-3">Previous period</th>
-              <th className="py-2 pr-3">Change</th>
-              <th className="py-2 pr-3">Collected</th>
+              <th scope="col" className="py-2 pr-3">Metric</th>
+              <th scope="col" className="py-2 pr-3">Current period</th>
+              <th scope="col" className="py-2 pr-3">Previous period</th>
+              <th scope="col" className="py-2 pr-3">Change</th>
+              <th scope="col" className="py-2 pr-3">Collected</th>
             </tr>
           </thead>
           <tbody>
@@ -104,7 +104,7 @@ export default function AnalyticsAccountsPage() {
           {error}
         </p>
       )}
-      {!data && loading && <p className="text-sm text-slate-500">Loading accounts…</p>}
+      {!data && loading && <p role="status" className="text-sm text-slate-500">Loading accounts…</p>}
       {data && data.length === 0 && <p className="rounded-2xl border border-slate-200 bg-white p-5 text-sm text-slate-600">No connected accounts match these filters.</p>}
       <div className={loading ? "space-y-6 opacity-60 transition-opacity" : "space-y-6"}>
         {data?.map((insights) => (

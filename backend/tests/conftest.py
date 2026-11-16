@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import os
 from collections import defaultdict
 from typing import Generator
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
+from sqlalchemy.engine import make_url
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -38,6 +40,11 @@ class FakeRedis:
             queue.insert(0, value)
         return len(queue)
 
+    def ltrim(self, key: str, start: int, end: int) -> bool:
+        if key in self.lists:
+            self.lists[key] = self.lists[key][start : end + 1]
+        return True
+
     def brpop(self, keys, timeout: int = 0):
         for key in keys:
             queue = self.lists.get(key)
@@ -46,13 +53,23 @@ class FakeRedis:
         return None
 
 
+def _test_engine():
+    """In-memory SQLite by default. Set TEST_DATABASE_URL to run the same tests
+    against PostgreSQL (the CI integration job does). The database name must
+    contain "test": every table is dropped and recreated for each test."""
+    url = os.environ.get("TEST_DATABASE_URL", "").strip()
+    if not url:
+        return create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    name = make_url(url).database or ""
+    if "test" not in name:
+        raise RuntimeError("TEST_DATABASE_URL must point at a database whose name contains 'test'.")
+    return create_engine(url, pool_pre_ping=True)
+
+
 @pytest.fixture
 def db_factory():
-    engine = create_engine(
-        "sqlite://",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
+    engine = _test_engine()
+    Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
     factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
     try:

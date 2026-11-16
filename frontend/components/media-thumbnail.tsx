@@ -10,6 +10,17 @@ type Props = {
 export function MediaThumbnail({ asset, className = "", controls = false }: Props) {
   const label = "original_filename" in asset ? asset.title || asset.original_filename : asset.title;
   if (asset.media_type === "video") {
+    // Grids show the stored poster image; only an explicit player loads the video itself.
+    if (!controls && asset.thumbnail_url) {
+      return (
+        <img
+          className={`bg-slate-900 object-cover ${className}`}
+          src={mediaUrl(asset.thumbnail_url)}
+          alt={label ? `${label} (video)` : "Video"}
+          loading="lazy"
+        />
+      );
+    }
     return (
       <video
         className={`bg-slate-900 object-cover ${className}`}
@@ -17,7 +28,7 @@ export function MediaThumbnail({ asset, className = "", controls = false }: Prop
         controls={controls}
         muted
         playsInline
-        preload="metadata"
+        preload={controls ? "metadata" : "none"}
         aria-label={label}
       />
     );

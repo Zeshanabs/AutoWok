@@ -320,7 +320,7 @@ export default function SocialAccountsPage() {
               </p>
             )}
             {loading ? (
-              <p className="mt-7">Loading social accounts…</p>
+              <p role="status" className="mt-7">Loading social accounts…</p>
             ) : (
               <>
                 <section className="mt-8">

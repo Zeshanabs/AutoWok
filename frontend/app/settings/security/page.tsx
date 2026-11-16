@@ -71,7 +71,7 @@ export default function SecuritySettingsPage() {
           </p>
         )}
         {loading ? (
-          <p className="mt-6">Loading sessions…</p>
+          <p role="status" className="mt-6">Loading sessions…</p>
         ) : (
           <section className="mt-6 divide-y divide-slate-100 rounded-2xl border border-slate-200 bg-white px-6">
             {sessions.length === 0 ? (

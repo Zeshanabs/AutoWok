@@ -6,6 +6,7 @@ import { addDays, addMonths, formatInZone, splitLocal, todayInZone, weekdayIndex
 import CalendarPage from "./page";
 
 vi.mock("next/navigation", () => ({
+  usePathname: () => "/dashboard",
   useRouter: () => ({ replace: vi.fn(), push: vi.fn() }),
 }));
 vi.mock("@/components/auth-provider", () => ({ useAuth: vi.fn() }));

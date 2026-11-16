@@ -66,7 +66,7 @@ export default function AgentSettingsPage() {
         {!workspaceId ? (
           <p className="mt-6 rounded-xl border border-dashed border-slate-300 p-6 text-sm text-slate-600">Select a workspace.</p>
         ) : loading ? (
-          <p className="mt-6 text-sm text-slate-500">Loading agent settings…</p>
+          <p role="status" className="mt-6 text-sm text-slate-500">Loading agent settings…</p>
         ) : (
           <div className="mt-6 space-y-6">
             <section className="grid gap-4 lg:grid-cols-2">

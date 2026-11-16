@@ -53,16 +53,16 @@ export function PostTable({ posts, selectable = false, selected = [], onToggle, 
       <table className="w-full min-w-[720px] text-left text-sm">
         <thead className="text-xs text-slate-500">
           <tr>
-            {selectable && <th className="py-2 pr-2">Compare</th>}
-            <th className="py-2 pr-3">Post</th>
-            <th className="py-2 pr-3">Published</th>
+            {selectable && <th scope="col" className="py-2 pr-2">Compare</th>}
+            <th scope="col" className="py-2 pr-3">Post</th>
+            <th scope="col" className="py-2 pr-3">Published</th>
             {columns.map((column) => (
-              <th key={column.key} className="py-2 pr-3">
+              <th scope="col" key={column.key} className="py-2 pr-3">
                 {column.label}
               </th>
             ))}
-            <th className="py-2 pr-3">Engagement rate</th>
-            <th className="py-2 pr-3">Last sync</th>
+            <th scope="col" className="py-2 pr-3">Engagement rate</th>
+            <th scope="col" className="py-2 pr-3">Last sync</th>
           </tr>
         </thead>
         <tbody>

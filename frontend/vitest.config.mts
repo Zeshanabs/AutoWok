@@ -11,5 +11,7 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     clearMocks: true,
+    // The first test of a file pays for module import and jsdom start-up; 5 s is too tight on a loaded CI runner.
+    testTimeout: 20000,
   },
 });

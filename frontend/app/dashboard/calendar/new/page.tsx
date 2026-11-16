@@ -270,7 +270,7 @@ export default function NewSchedulePage() {
   return (
     <ProtectedPage>
       <AppShell>
-        <Suspense fallback={<p className="text-sm text-slate-500">Loading…</p>}>
+        <Suspense fallback={<p role="status" className="text-sm text-slate-500">Loading…</p>}>
           <NewScheduleForm />
         </Suspense>
       </AppShell>

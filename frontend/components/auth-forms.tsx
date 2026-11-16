@@ -165,6 +165,7 @@ export function RegisterForm() {
           type={showPassword ? "text" : "password"}
           name="password"
           autoComplete="new-password"
+          aria-describedby="password-rules"
           minLength={12}
           maxLength={128}
           required
@@ -179,12 +180,13 @@ export function RegisterForm() {
           type={showPassword ? "text" : "password"}
           name="confirm_password"
           autoComplete="new-password"
+          aria-describedby="password-rules"
           required
           value={confirmPassword}
           onChange={(event) => setConfirmPassword(event.target.value)}
         />
       </label>
-      <p className="text-xs leading-5 text-slate-500">
+      <p id="password-rules" className="text-xs leading-5 text-slate-600">
         At least 12 characters, including uppercase and lowercase letters, a
         number, and a symbol.
       </p>

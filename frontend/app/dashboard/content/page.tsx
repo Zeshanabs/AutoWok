@@ -73,7 +73,7 @@ export default function ContentStudioDashboardPage() {
             )}
 
             {loading ? (
-              <p>Loading content projects…</p>
+              <p role="status">Loading content projects…</p>
             ) : projects.length === 0 ? (
               <p className="rounded-xl border border-dashed border-slate-300 p-6 text-sm text-slate-600">
                 No content projects yet for this workspace.

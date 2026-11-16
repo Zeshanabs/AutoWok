@@ -1,5 +1,6 @@
 "use client";
 
+import { pollWhileVisible } from "@/lib/polling";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
@@ -36,7 +37,7 @@ export default function AiAgentsDashboardPage() {
   }, [workspaceId]);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => void load(), 0);
+    const timer = window.setTimeout(() => load(), 0);
     return () => window.clearTimeout(timer);
   }, [load]);
 
@@ -44,8 +45,8 @@ export default function AiAgentsDashboardPage() {
   const hasActive = Boolean(stats?.recent.some((item) => isActive(item.status)));
   useEffect(() => {
     if (!hasActive) return;
-    const timer = window.setInterval(() => void load(), 5000);
-    return () => window.clearInterval(timer);
+    const stopPolling = pollWhileVisible(() => load(), 5000);
+    return () => stopPolling();
   }, [hasActive, load]);
 
   const loading = Boolean(workspaceId) && loadedFor !== workspaceId;
@@ -70,7 +71,7 @@ export default function AiAgentsDashboardPage() {
         {!workspaceId ? (
           <p className="mt-6 rounded-xl border border-dashed border-slate-300 p-6 text-sm text-slate-600">Select a workspace.</p>
         ) : loading ? (
-          <p className="mt-6 text-sm text-slate-500">Loading the AI workspace…</p>
+          <p role="status" className="mt-6 text-sm text-slate-500">Loading the AI workspace…</p>
         ) : (
           <div className="mt-6 space-y-6">
             {groq && !groq.configured && (

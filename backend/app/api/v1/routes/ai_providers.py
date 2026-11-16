@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as DBSession
 
+from app.api.v1.dependencies import limits
 from app.api.v1.dependencies.auth import (
     get_current_user,
     require_workspace_admin,
@@ -26,7 +27,6 @@ from app.services.ai_encryption import EncryptionNotConfigured, decrypt_api_key,
 from app.services.ai_providers import (
     PROVIDER_REGISTRY,
     ProviderTestResult,
-    ProviderTestStatus,
     PinnedHTTPTransport,
     validate_provider_endpoint,
     validate_public_custom_endpoint,
@@ -316,7 +316,7 @@ def delete_ai_provider(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.post("/{provider_id}/test", response_model=AIProviderTestResponse)
+@router.post("/{provider_id}/test", response_model=AIProviderTestResponse, dependencies=[Depends(limits.provider_test)])
 def test_ai_provider(
     workspace_id: UUID,
     provider_id: UUID,

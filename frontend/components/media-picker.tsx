@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 
+import { useModal } from "@/components/use-modal";
 import { MediaThumbnail } from "@/components/media-thumbnail";
 import { ApiError, apiRequest } from "@/lib/api";
 import type { MediaAsset } from "@/lib/media-types";
@@ -19,6 +20,7 @@ export function MediaPicker({ workspaceId, initialSelection, onClose, onSave }: 
   const [selected, setSelected] = useState<string[]>(initialSelection);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const dialogRef = useModal<HTMLDivElement>(true, onClose);
 
   useEffect(() => {
     let active = true;
@@ -36,15 +38,15 @@ export function MediaPicker({ workspaceId, initialSelection, onClose, onSave }: 
 
   return (
     <div className="fixed inset-0 z-40 flex items-end justify-center bg-slate-900/40 p-4 sm:items-center">
-      <div role="dialog" aria-modal="true" aria-label="Select media" className="flex max-h-[85vh] w-full max-w-3xl flex-col rounded-2xl bg-white shadow-xl">
+      <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Select media" className="flex max-h-[85vh] w-full max-w-3xl flex-col rounded-2xl bg-white shadow-xl">
         <div className="flex items-center justify-between border-b border-slate-200 p-4">
-          <h2 className="font-semibold">Select media ({selected.length} selected)</h2>
+          <h2 className="font-semibold" aria-live="polite">Select media ({selected.length} selected)</h2>
           <button type="button" onClick={onClose} className="text-sm text-slate-600">Close</button>
         </div>
         <div className="overflow-y-auto p-4">
           {error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-800">{error}</p>}
           {loading ? (
-            <p className="text-sm text-slate-500">Loading media…</p>
+            <p role="status" className="text-sm text-slate-600">Loading media…</p>
           ) : assets.length === 0 ? (
             <p className="rounded-xl border border-dashed border-slate-300 p-6 text-sm text-slate-600">
               The media library is empty. Upload files from the Media page first.

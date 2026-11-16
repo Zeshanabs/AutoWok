@@ -19,6 +19,8 @@ export default function ResearchDetailPage() {
   const [findings, setFindings] = useState<ResearchFinding[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [actionBusy, setActionBusy] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const loadProject = useCallback(async () => {
     if (!researchId) {
@@ -46,6 +48,26 @@ export default function ResearchDetailPage() {
       setLoading(false);
     }
   }, [researchId]);
+
+  const runAction = async (action: "run" | "cancel") => {
+    if (!project) return;
+    setActionBusy(true);
+    setActionError(null);
+    try {
+      await apiRequest(`/research/${project.id}/${action}`, { method: "POST" });
+      await loadProject();
+    } catch (actionFailure) {
+      setActionError(
+        actionFailure instanceof ApiError
+          ? actionFailure.message
+          : action === "run"
+            ? "The research could not be started."
+            : "The research could not be cancelled.",
+      );
+    } finally {
+      setActionBusy(false);
+    }
+  };
 
   useEffect(() => {
     const timer = window.setTimeout(() => void loadProject(), 0);
@@ -76,7 +98,7 @@ export default function ResearchDetailPage() {
         )}
 
         {loading ? (
-          <p>Loading research report…</p>
+          <p role="status">Loading research report…</p>
         ) : !project ? (
           <p className="rounded-xl border border-dashed border-slate-300 p-6 text-sm text-slate-600">
             Project not found.
@@ -181,20 +203,22 @@ export default function ResearchDetailPage() {
               </div>
             </section>
 
+            {actionError && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-800">{actionError}</p>}
+            {actionBusy && <p role="status" className="text-sm text-slate-600">Working…</p>}
             {selectedWorkspace && (
               <div className="flex gap-3">
                 <button
-                  onClick={() => {
-                    void apiRequest(`/research/${project.id}/run`, { method: "POST" }).then(() => void loadProject());
-                  }}
+                  type="button"
+                  disabled={actionBusy}
+                  onClick={() => void runAction("run")}
                   className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700"
                 >
                   Run research
                 </button>
                 <button
-                  onClick={() => {
-                    void apiRequest(`/research/${project.id}/cancel`, { method: "POST" }).then(() => void loadProject());
-                  }}
+                  type="button"
+                  disabled={actionBusy}
+                  onClick={() => void runAction("cancel")}
                   className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold hover:bg-slate-50"
                 >
                   Cancel

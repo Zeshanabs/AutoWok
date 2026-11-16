@@ -123,7 +123,7 @@ export default function BrandSettingsPage() {
           </p>
         )}
         {loading ? (
-          <p className="mt-6">Loading brand settings…</p>
+          <p role="status" className="mt-6">Loading brand settings…</p>
         ) : overview ? (
           <form
             onSubmit={saveSettings}

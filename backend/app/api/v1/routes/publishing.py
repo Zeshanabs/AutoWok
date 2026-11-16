@@ -5,8 +5,9 @@ from uuid import UUID, uuid4
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from sqlalchemy.orm import Session as DBSession
 
+from app.api.v1.dependencies import limits
 from app.api.v1.dependencies.auth import authorize_workspace, get_current_user
-from app.db.session import get_db
+from app.db.session import get_db, preload
 from app.models import ContentDraft, ContentProject, ContentPublication, SocialAccount, User
 from app.schemas.publishing import (
     EligibilityRead,
@@ -131,6 +132,7 @@ def validate_publishing(
 
 @router.post(
     "/content/drafts/{draft_id}/publish",
+    dependencies=[Depends(limits.publish)],
     response_model=PublicationRead,
     status_code=status.HTTP_202_ACCEPTED,
 )
@@ -203,6 +205,11 @@ def list_publishing_jobs(
     if source:
         query = query.filter(ContentPublication.source == source)
     jobs = query.order_by(ContentPublication.created_at.desc()).limit(limit).all()
+    # Two batched queries instead of two per job.
+    _related = [  # noqa: F841 - keeps the batch-loaded rows alive
+        preload(db, ContentProject, [job.project_id for job in jobs]),
+        preload(db, SocialAccount, [job.social_account_id for job in jobs]),
+    ]
     return [publication_read(db, job) for job in jobs]
 
 
@@ -215,7 +222,7 @@ def get_publishing_job(
     return publication_read(db, _get_job(db, current_user, job_id), include_attempts=True)
 
 
-@router.post("/publishing/jobs/{job_id}/retry", response_model=PublicationRead)
+@router.post("/publishing/jobs/{job_id}/retry", response_model=PublicationRead, dependencies=[Depends(limits.publish)])
 def retry_publishing_job(
     job_id: UUID,
     payload: RetryRequest | None = None,

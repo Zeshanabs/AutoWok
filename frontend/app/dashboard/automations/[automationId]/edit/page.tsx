@@ -46,7 +46,7 @@ export default function EditAutomationPage() {
           ) : !canManage ? (
             <p className="rounded-xl border border-dashed border-slate-300 p-6 text-sm text-slate-600">Only workspace Owners and Admins can edit automations.</p>
           ) : !automation ? (
-            !error && <p className="text-sm text-slate-500">Loading…</p>
+            !error && <p role="status" className="text-sm text-slate-500">Loading…</p>
           ) : automation.status === "archived" ? (
             <p className="rounded-xl border border-dashed border-slate-300 p-6 text-sm text-slate-600">Archived automations cannot be edited. Duplicate it to start a new draft.</p>
           ) : (

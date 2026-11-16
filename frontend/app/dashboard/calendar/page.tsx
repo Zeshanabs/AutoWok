@@ -24,7 +24,8 @@ function itemHref(item: CalendarItem): string {
 function PlatformMark({ platform }: { platform: string }) {
   return (
     <span
-      aria-label={platform}
+      role="img"
+      aria-label={platform === "instagram" ? "Instagram" : "Facebook"}
       className={`inline-flex h-4 w-4 shrink-0 items-center justify-center rounded text-[9px] font-bold text-white ${platform === "instagram" ? "bg-pink-600" : "bg-blue-600"}`}
     >
       {platform === "instagram" ? "IG" : "f"}
@@ -44,6 +45,7 @@ function ItemChip({ item, compact = false }: { item: CalendarItem; compact?: boo
         <PlatformMark platform={item.platform} />
         <span className="font-semibold">{item.local_time}</span>
         <span className="truncate">{item.title ?? "Untitled"}</span>
+        <span className="sr-only">, {statusLabel(item.status)}</span>
       </span>
       {!compact && (
         <span className="mt-0.5 block truncate opacity-80">
@@ -288,7 +290,7 @@ export default function CalendarPage() {
             <div className="mt-5 grid gap-6 lg:grid-cols-[1fr_16rem]">
               <div className={loading ? "opacity-60 transition-opacity" : ""} aria-busy={loading}>
                 {!calendar ? (
-                  <p className="text-sm text-slate-500">Loading calendar…</p>
+                  <p role="status" className="text-sm text-slate-600">Loading calendar…</p>
                 ) : view === "month" ? (
                   <>
                     <div className="hidden overflow-hidden rounded-2xl border border-slate-200 bg-white md:block">
@@ -299,14 +301,14 @@ export default function CalendarPage() {
                         {calendar.days.map((day) => {
                           const items = itemsByDay.get(day) ?? [];
                           return (
-                            <div key={day} className={`min-h-28 border-b border-r border-slate-100 p-1.5 ${day.slice(0, 7) !== currentMonth ? "bg-slate-50/70 text-slate-400" : ""}`}>
-                              <button type="button" onClick={() => { setAnchor(day); setView("day"); }} className={`mb-1 inline-flex h-6 w-6 items-center justify-center rounded-full text-xs ${day === today ? "bg-indigo-600 font-bold text-white" : "hover:bg-slate-100"}`}>
+                            <div key={day} className={`min-h-28 border-b border-r border-slate-100 p-1.5 ${day.slice(0, 7) !== currentMonth ? "bg-slate-50/70 text-slate-600" : ""}`}>
+                              <button type="button" aria-label={formatDay(day, { weekday: "long", day: "numeric", month: "long" })} aria-current={day === today ? "date" : undefined} onClick={() => { setAnchor(day); setView("day"); }} className={`mb-1 inline-flex h-6 w-6 items-center justify-center rounded-full text-xs ${day === today ? "bg-indigo-600 font-bold text-white" : "hover:bg-slate-100"}`}>
                                 {Number(day.slice(8))}
                               </button>
                               <div className="space-y-1">
                                 {items.slice(0, 3).map((item) => <ItemChip key={`${item.kind}-${item.id}`} item={item} compact />)}
                                 {items.length > 3 && (
-                                  <button type="button" onClick={() => { setAnchor(day); setView("day"); }} className="text-xs font-medium text-indigo-700">+{items.length - 3} more</button>
+                                  <button type="button" onClick={() => { setAnchor(day); setView("day"); }} className="inline-flex min-h-6 items-center text-xs font-medium text-indigo-700">+{items.length - 3} more<span className="sr-only"> on {formatDay(day, { day: "numeric", month: "long" })}</span></button>
                                 )}
                               </div>
                             </div>

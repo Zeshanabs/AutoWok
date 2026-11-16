@@ -111,3 +111,18 @@ export function newIdempotencyKey(prefix = "req"): string {
       : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   return `${prefix}-${random}`;
 }
+
+const inFlightGets = new Map<string, Promise<unknown>>();
+
+/**
+ * GET that is shared between callers asking for the same path at the same
+ * time (for example two components mounting together). Nothing is cached once
+ * the response has arrived, so data is never stale.
+ */
+export function sharedGet<T>(path: string): Promise<T> {
+  const existing = inFlightGets.get(path);
+  if (existing) return existing as Promise<T>;
+  const request = apiRequest<T>(path).finally(() => inFlightGets.delete(path));
+  inFlightGets.set(path, request);
+  return request;
+}

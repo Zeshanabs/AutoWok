@@ -38,3 +38,8 @@ def register(tasks: list[Callable[[DBSession], int]]) -> None:
     for task in (schedule_analytics_syncs, run_analytics_syncs):
         if task not in tasks:
             tasks.append(task)
+
+
+# Deciding which accounts are due is housekeeping: once a minute is enough for a
+# task whose own interval is measured in hours.
+schedule_analytics_syncs.min_interval_seconds = get_settings().worker_housekeeping_interval_seconds  # type: ignore[attr-defined]
