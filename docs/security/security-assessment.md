@@ -130,8 +130,8 @@ Workspace membership and role are checked on the server for the object actually 
 
 | Secret | Procedure | Effect |
 |---|---|---|
-| `AI_ENCRYPTION_KEY` | Generate a new key. Set it as `AI_ENCRYPTION_KEY` and the old one as `AI_ENCRYPTION_KEY_PREVIOUS`. Restart. Run `python scripts/rotate_encryption_keys.py` in the backend container to re-encrypt. Remove the previous key and restart. | None for users. |
-| `TOKEN_ENCRYPTION_KEY` | Same, with `TOKEN_ENCRYPTION_KEY_PREVIOUS` ([token-storage.md](token-storage.md)). | None for users. |
+| `AI_ENCRYPTION_KEY` | Generate a new key. Set it as `AI_ENCRYPTION_KEY` and the old one as `AI_ENCRYPTION_KEY_PREVIOUS`. Restart. Run `python scripts/rotate_encryption_keys.py --scope ai --dry-run` in the backend container, then without `--dry-run`, to re-encrypt. Remove the previous key and restart. | None for users. |
+| `TOKEN_ENCRYPTION_KEY` | Same, with `TOKEN_ENCRYPTION_KEY_PREVIOUS` and `--scope meta` ([token-storage.md](token-storage.md)). | None for users. |
 | `MEDIA_URL_SIGNING_SECRET` | Replace and restart. | Outstanding signed media links stop working; in-flight publishing jobs retry with new links. Rotate when no publishing is in progress. |
 | `META_OAUTH_STATE_SECRET` | Replace and restart. | A Meta authorization in progress must be started again. |
 | `META_APP_SECRET` | Reset it in the Meta developer console, update, restart. | None if done together. |

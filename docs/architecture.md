@@ -2,7 +2,7 @@
 
 ## Purpose and phase boundary
 
-This document describes the Phase 0 foundation, Phase 1 authentication/workspaces, Phase 2 brand profiles, and Phase 3 Meta/Groq integration foundations. Phase 3 does not include research, content generation workflows, or publishing.
+This document describes the architecture of Autowok through Phase 12. The first sections cover the foundation (Phases 0–3); later sections cover media, publishing and scheduling (7–8), analytics (9), automations (10), multi-agent workflows (11) and production operations (12). Phase documents in this directory hold the detail for each feature.
 
 ## Components and request flow
 
@@ -16,7 +16,7 @@ Workspace selection is a non-secret preference kept in `sessionStorage`; the API
 
 FastAPI exposes `/api/v1/auth/*`, `/api/v1/workspaces/*`, brand profile routes, and AI provider configuration routes. Pydantic validates all public request and response data. The backend is authoritative for account authentication, session validity, workspace membership, and role authorization. Inaccessible workspace resources return 404 where appropriate.
 
-Unsafe browser requests must present an exact allowed `Origin` and `X-CSRF-Protection: 1`. Credentialed CORS accepts only the explicit `CORS_ORIGINS` list. Responses include standard framing, content-type, referrer, and permissions headers; HTTPS production responses also include HSTS.
+Unsafe browser requests must present an exact allowed `Origin` and `X-CSRF-Protection: 1`. Credentialed CORS accepts only the explicit `CORS_ORIGINS` list. Responses include a Content-Security-Policy and framing, content-type, referrer, and permissions headers; HTTPS production responses also include HSTS (see [security/security-assessment.md](security/security-assessment.md#security-headers)).
 
 ### Database
 
@@ -42,7 +42,7 @@ Cookie configuration uses `SESSION_COOKIE_NAME`, `SESSION_COOKIE_SECURE`, and `S
 
 Cookie authentication is protected against CSRF by exact origin checking plus a required non-simple custom header on every unsafe method. Browsers cannot send that header cross-origin without passing the explicit credentialed CORS policy. This is intentionally a small double-check rather than a separate CSRF-token endpoint; non-browser clients must send the configured origin and header too.
 
-Login is limited to 10 attempts per account/IP and 60 per peer IP per 15 minutes; registration is limited to 5 attempts per peer IP per hour using atomic Redis counters. The API fails closed with 503 if Redis is unavailable. Behind a reverse proxy, forwarded client addresses must be configured by trusted infrastructure; arbitrary forwarded headers are not used.
+Login is limited to 10 attempts per account/IP, 20 per account from any address, and 60 per peer IP per 15 minutes; registration is limited to 5 attempts per peer IP per hour using atomic Redis counters. The API fails closed with 503 if Redis is unavailable. Behind a reverse proxy, the production image runs uvicorn with `--proxy-headers` and trusts forwarded addresses only from `FORWARDED_ALLOW_IPS`; arbitrary forwarded headers are not used.
 
 Meta authorization, callback, token refresh, account discovery, connection, and verification operations also use Redis-backed per-user/IP limits and fail closed if Redis is unavailable. Limits are intentionally separate per operation so vendor calls cannot be triggered without bound by a workspace administrator.
 
@@ -208,6 +208,64 @@ path into the content studio is the human accept action, which creates a `draft`
 `ContentStudioService`; Phase 5 approval and Phase 7/8 publishing safeguards are unchanged. Details:
 `docs/phase-11-multi-agent.md`.
 
+## Production operations (Phase 12)
+
+Phase 12 added no product feature. It changed how the same application is run, observed and protected.
+
+```
+Internet ─▶ proxy (HTTPS, routing, body limits) ─┬─▶ frontend (Next.js standalone)
+                                                 └─▶ backend (FastAPI) ─┬─▶ PostgreSQL
+                    worker (python -m app.worker) ──────────────────────┼─▶ Redis
+                                                                        └─▶ media volume
+```
+
+### Request path
+
+Every request passes, from the outside in: request context and metrics → trusted-host check (when `ALLOWED_HOSTS` is set) → CORS → body-size limit → route.
+
+* **Context** (`app/core/context.py`): a request id and correlation id are created (or taken from `X-Request-ID` / `X-Correlation-ID` when they are plain tokens) and held for the request; the user and workspace are added once authenticated and authorized. Every log line and error report carries them.
+* **Body limit** (`app/core/http.py`): enforced while the body is received, so an oversized or unauthenticated upload is refused before it is parsed or written to disk.
+* **Errors**: an unexpected exception is reported through `app/core/error_reporting.py` and answered with a generic message and the request id.
+* **Headers**: set in one place for the API (`security_headers`) and in `frontend/next.config.ts` for the web app.
+* **Rate limits** (`app/services/rate_limit.py`, `app/api/v1/dependencies/limits.py`): Redis counters, per address before authentication and per user after it, attached to expensive routes as dependencies.
+
+### Observability
+
+`app/core/logging.py` writes structured logs with secret redaction. `app/core/metrics.py` holds the API's Prometheus series and reads worker counters and queue depth at scrape time. Health is split into liveness, readiness and an authenticated detail view. See [monitoring.md](monitoring.md).
+
+### Background work and recovery
+
+One worker process runs every kind of background job; several workers can run at once. PostgreSQL is the source of truth for all of them, and Redis only wakes the worker sooner.
+
+Order within one worker loop:
+
+1. The scheduler turns due scheduled posts into publishing jobs, and about once a minute repairs any post whose job finished without the post being updated.
+2. Publishing jobs run.
+3. Analytics synchronisation, automations and AI agent workflows run until `WORKER_TASK_BUDGET_SECONDS` is used; tasks that did not get a turn go first next time. Housekeeping scans run at most once a minute.
+
+| Property | How it is achieved |
+|---|---|
+| Persistence | Every job is a database row committed before any wake-up is sent. Nothing exists only in Redis or memory. |
+| One worker per job | A conditional `UPDATE` claims the job and sets a lease. |
+| Lease renewal and fencing | Publishing renews its lease at each stage and while waiting for Instagram processing; each renewal checks that this worker still owns the job and stops without writing if not. Analytics renews during long syncs. |
+| No duplicate publication | Unique idempotency key and "active guard" per draft and account. After a crash: a Facebook job whose post id was stored is finished without calling Meta; a job interrupted during the final request is marked "outcome uncertain" for a person to check; an Instagram job resumes from the container status. |
+| Retries | Bounded attempts, exponential backoff with jitter and a cap; permanent errors are not retried. Never-attempted jobs are picked before retries. |
+| Poison jobs | A job abandoned more often than its attempt limit is failed instead of being reclaimed forever. An unexpected error in an analytics sync ends the job and releases its guard. |
+| Failed jobs | Stay in the database as `failed` with category, code and message, visible in the app and counted in `autowok_jobs_by_status`. There is no separate dead-letter queue. |
+| Timeouts | Meta calls 15 s, Groq calls `GROQ_TIMEOUT_SECONDS`, agent steps `AGENT_STEP_TIMEOUT_SECONDS`, database statements `DB_STATEMENT_TIMEOUT_MS`, Redis sockets `REDIS_SOCKET_TIMEOUT_SECONDS`. |
+| Isolation between tasks | Each task and job runs in its own error boundary; one failing post or task does not stop the others. |
+| Health | Heartbeat in Redis and in a file every loop; container health check; `autowok_workers_alive`. |
+| Shutdown | `SIGTERM` stops the worker after the job in progress; no new job is started. |
+| Database or Redis outage | Redis down: the worker polls the database on its normal interval. Database down: exponential backoff up to 60 s, then normal operation resumes. |
+
+Media processing is not a background job: uploads are validated and re-encoded during the upload request, off the event loop, with bounded concurrency.
+
+Known limits: jobs run one after another within a worker, so a long AI workflow delays other non-publishing work until its step finishes (run a second worker to avoid this). A publishing failure notifies someone only if the workspace has an automation for it; otherwise it is visible in the Publishing page and in metrics.
+
+### Deployment units
+
+`backend/Dockerfile` and `frontend/Dockerfile` each have a `dev` target (used by `docker-compose.yml`) and a `runtime` target (used by `docker-compose.prod.yml`): no build tools or tests, unprivileged user, read-only filesystem. Migrations are a separate one-shot job. See [deployment.md](deployment.md).
+
 ## Environment and operations
 
 The root `.env.example` documents:
@@ -238,4 +296,8 @@ Do not commit `.env` or use secrets in public frontend variables. Direct backend
 
 ## Remaining work and trade-offs
 
-Email verification delivery, password recovery, account invitations, MFA, workspace deletion, and ownership transfer are not implemented. Publishing (Phase 7), scheduling (Phase 8) and analytics collection (Phase 9) are implemented but only verified against a mocked Meta API. Automations (Phase 10) have no email action because no email service exists, and their PostgreSQL migration was compiled offline but not applied to a live PostgreSQL instance in the development environment. Multi-agent workflows (Phase 11) are verified with mocked Groq responses only; live Groq inference is untested, the Phase 4 search provider still returns no live results (so new research has no sources and findings are labelled as assumptions), and the Phase 11 migration was checked on SQLite, not PostgreSQL. Phase 3 tests use mocks; real vendor credentials, Meta App Review, and live API calls remain unverified. Apply and verify PostgreSQL migrations in the deployment environment. Session activity metadata stores a bounded user-agent string but exposes only a coarse device label. Authentication rate-limit counters are ephemeral and Redis-backed; a Redis outage blocks authentication rather than disabling protection. Production HTTPS termination, proxy trust, monitoring, backups, and operational key/secret rotation must be configured by the deployment environment.
+Not implemented: email verification delivery, password recovery, account invitations, MFA, workspace deletion, ownership transfer, an email action for automations, object storage for media, and data retention for sessions, audit logs and automation events.
+
+Verified only against mocks: Meta OAuth, publishing and insights; Groq inference. The Phase 4 search provider returns no live results, so new research has no sources. The Phase 6 content intelligence tools are rule-based and do not call Groq.
+
+Verified locally only: PostgreSQL migrations and the full test suite on PostgreSQL 16; the production container stack behind the bundled proxy; backup and restore. Nothing has been deployed to staging or production. Details and the full list of open items: the Phase 12 documents ([deployment](deployment.md), [security assessment](security/security-assessment.md), [performance](performance-report.md), [accessibility](accessibility-report.md), [dependencies](dependency-audit.md)).

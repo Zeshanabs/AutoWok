@@ -8,7 +8,7 @@ The long-term product aims to help teams establish a brand, research topics with
 
 ## Current phase
 
-Phases 1–6 provide authentication and workspaces, brand profiles and AI configuration, Meta/Groq integration foundations, research with citations, content projects with versioning and approvals, and Groq-based content intelligence. **Phase 7** adds the media library, platform previews, and controlled immediate publishing to Facebook Pages and Instagram Professional accounts. **Phase 8** adds the content calendar, timezone-aware scheduling, and the automated publishing queue. **Phase 9** adds Facebook Page and Instagram analytics: background insight collection, account and post performance, platform comparison, content-performance rankings, and CSV/PDF reports. **Phase 10** adds controlled, rule-based workflow automations (trigger → conditions → allowlisted actions) with dry-run testing, execution history, in-app notifications and internal tasks. **Phase 11** adds a controlled multi-agent AI system: eight specialized agents run in four predefined workflows under a central orchestrator, and people review every result. Automated tests use mocked or local dependencies. Live Meta publishing and insight retrieval, Meta App Review, live Groq inference for agents, and PostgreSQL/Docker runs of Phases 7–11 remain **unverified** in this environment.
+Phases 1–6 provide authentication and workspaces, brand profiles and AI configuration, Meta/Groq integration foundations, research with citations, content projects with versioning and approvals, and Groq-based content intelligence. **Phase 7** adds the media library, platform previews, and controlled immediate publishing to Facebook Pages and Instagram Professional accounts. **Phase 8** adds the content calendar, timezone-aware scheduling, and the automated publishing queue. **Phase 9** adds Facebook Page and Instagram analytics: background insight collection, account and post performance, platform comparison, content-performance rankings, and CSV/PDF reports. **Phase 10** adds controlled, rule-based workflow automations (trigger → conditions → allowlisted actions) with dry-run testing, execution history, in-app notifications and internal tasks. **Phase 11** adds a controlled multi-agent AI system: eight specialized agents run in four predefined workflows under a central orchestrator, and people review every result. **Phase 12** prepares the application for production: security hardening, performance work, worker reliability, monitoring, backups, accessibility fixes, CI/CD and a production container stack. Automated tests use mocked or local dependencies. The full test suite and all migrations pass on PostgreSQL 16, and the production stack has been run locally. Live Meta publishing and insight retrieval, Meta App Review, live Groq inference, and any staging or production deployment remain **unverified**.
 
 ## Technology stack
 
@@ -27,7 +27,7 @@ The project is intentionally separated into independent layers:
 
 ## Phase 6: Advanced AI Content Intelligence
 
-This implementation adds modular AI content intelligence utilities that can be used to generate ideas, improve writing, score content, critique drafts, and validate claims against supplied research context without inventing unsupported facts. The backend reuses the existing Groq provider integration and provides API endpoints under `/api/v1/content/intelligence/*` when a workspace member has access.
+Modular content intelligence utilities under `/api/v1/content/intelligence/*` (ideas, writing, critique, fact-check, hooks, hashtags, repurposing, brand consistency, scoring, rewriting), available to workspace members and rate limited per user. As implemented they are **rule-based**: the services accept a Groq client but the routes do not supply one, so they return structured suggestions built from the request rather than model output, and the web app has no screens for them. Model-backed generation is available in the content studio (`POST /content/projects/{id}/generate`) and in the Phase 11 AI workflows. Four of these endpoints failed on every call until Phase 12 fixed their prompt templates.
 
 ## Phase 7: Media library, previews, and controlled publishing
 
@@ -71,62 +71,81 @@ This implementation adds modular AI content intelligence utilities that can be u
 - **Human control**: agents cannot approve, schedule or publish. A person accepts a draft into the content studio, where it starts as `draft` and follows the existing approval workflow; they can also request a bounded revision or reject the output.
 - **Providers**: Groq is the only LLM provider (existing `GROQ_*` settings, optional `AGENT_GROQ_MODEL`). External research uses the Phase 4 research engine and its search provider. Verified with mocked Groq responses only; see [docs/phase-11-multi-agent.md](docs/phase-11-multi-agent.md) for the architecture, schemas, limits and known limitations.
 
+## Phase 12: Production readiness
+
+No new product features. What changed, and where to read about it:
+
+| Area | Summary | Document |
+|---|---|---|
+| Deployment | Production images (non-root, read-only), `docker-compose.prod.yml` with an HTTPS reverse proxy; only the proxy is reachable from outside | [docs/deployment.md](docs/deployment.md) |
+| Configuration | Every environment variable; production refuses to start with unsafe settings | [docs/configuration.md](docs/configuration.md) |
+| Security | Findings by severity, fixes, controls, secret rotation | [docs/security/security-assessment.md](docs/security/security-assessment.md) |
+| Monitoring | Structured logs with request ids, Prometheus metrics, health checks, error reporting | [docs/monitoring.md](docs/monitoring.md) |
+| Backups | Encrypted database and media backups, verified restore procedure | [docs/backup-recovery.md](docs/backup-recovery.md) |
+| Performance | Measured before/after results, database indexes, budgets | [docs/performance-report.md](docs/performance-report.md) |
+| Accessibility | WCAG 2.2 AA review: what was fixed and what is open | [docs/accessibility-report.md](docs/accessibility-report.md) |
+| Dependencies | Vulnerability audit and upgrades | [docs/dependency-audit.md](docs/dependency-audit.md) |
+| CI/CD | Checks on every change; manual, approved staging deployment | [docs/ci-cd.md](docs/ci-cd.md) |
+| Operations | When something goes wrong | [docs/troubleshooting.md](docs/troubleshooting.md), [docs/incident-response.md](docs/incident-response.md) |
+
+Behaviour changes that users or API clients can notice:
+
+- Content projects can be deleted by Owners and Admins, and by a Member only for their own draft. Published or scheduled content cannot be deleted.
+- `GET /api/v1/content/projects` returns the newest 200 projects by default (`limit` up to 500, `offset`, total in the `X-Total-Count` header).
+- Expensive actions are rate limited per user (AI generation, research, uploads, publishing, scheduling, exports, provider tests, workspace creation). A limited request receives HTTP 429 with `Retry-After`.
+- `GET /api/v1/ready` returns HTTP 503 when the database or Redis is unavailable (previously 200 with a "degraded" body). `/api/v1/health` no longer reports the environment name.
+- The interactive API documentation (`/docs`) is off in production.
+- Unexpected errors return a generic message with a `request_id`.
+
 ## Folder structure
 
 ```text
 autowok/
 ├── .github/
+│   ├── dependabot.yml
 │   └── workflows/
-│       └── ci.yml
+│       ├── ci.yml                  checks on every change
+│       └── deploy-staging.yml      manual, approved staging deployment
 ├── backend/
-│   ├── alembic/
+│   ├── alembic/versions/           database migrations
 │   ├── app/
-│   │   ├── api/
-│   │   │   └── v1/
-│   │   │       └── routes/
+│   │   ├── api/v1/                 routes and dependencies
+│   │   ├── core/                   config, logging, metrics, error reporting, HTTP protections
+│   │   ├── db/
+│   │   ├── integrations/
 │   │   ├── models/
 │   │   ├── schemas/
-│   │   ├── core/
-│   │   ├── db/
-│   │   └── services/
-│   ├── alembic/versions/
+│   │   ├── services/
+│   │   ├── main.py
+│   │   └── worker.py               background worker
+│   ├── perf/                       seed, benchmark and query-count tools
+│   ├── scripts/
 │   ├── tests/
-│   ├── alembic.ini
-│   ├── Dockerfile
-│   ├── main.py
-│   ├── pyproject.toml
-│   └── requirements.txt
+│   ├── Dockerfile                  targets: dev, runtime
+│   ├── requirements.txt            runtime dependencies (pinned)
+│   ├── requirements-dev.txt        test, lint and audit tools
+│   └── constraints.txt             full resolved lock
 ├── docs/
-│   └── architecture.md
 ├── frontend/
 │   ├── app/
 │   ├── components/
 │   ├── lib/
-│   ├── public/
-│   ├── Dockerfile
-│   ├── next.config.ts
-│   ├── package.json
-│   ├── postcss.config.mjs
-│   ├── tsconfig.json
-│   └── eslint.config.mjs
+│   └── Dockerfile                  targets: dev, runtime
 ├── infrastructure/
-│   ├── docker/
-│   └── storage/
+│   └── proxy/Caddyfile             reverse proxy (HTTPS, routing)
 ├── scripts/
-├── storage/
-│   └── local/
-├── .dockerignore
-├── .env.example
-├── .gitignore
-├── docker-compose.yml
+│   └── backup/                     backup.sh, verify.sh, restore.sh
+├── .env.example                    development configuration template
+├── .env.production.example         staging/production configuration template
+├── docker-compose.yml              development stack
+├── docker-compose.prod.yml         staging/production stack
 ├── Makefile
-├── README.md
-└── .git
+└── README.md
 ```
 
 ## Prerequisites
 
-- Node.js 20+ and npm
+- Node.js 22+ and npm
 - Python 3.12+
 - Git
 - Docker Desktop or Docker Engine (optional for local compose-based startup)
@@ -148,12 +167,12 @@ cd ../backend
 C:\Users\Zeeshan Abbas\AppData\Local\Programs\Python\Python312\python.exe -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
-pip install -r requirements.txt
+pip install -r requirements-dev.txt -c constraints.txt
 ```
 
 ## Docker-based startup
 
-Use Docker Compose to run the PostgreSQL, Redis, backend, and frontend services together:
+This is the **development** stack (source mounted, hot reload, ports on localhost). For staging and production use `docker-compose.prod.yml`: see [docs/deployment.md](docs/deployment.md). Run after changing dependencies too, so the images are rebuilt:
 
 ```powershell
 docker compose up --build
@@ -194,12 +213,13 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 Backend URL: http://localhost:8000  
 API docs: http://localhost:8000/docs  
-Health endpoint: http://localhost:8000/health  
-Ready endpoint: http://localhost:8000/ready
+Health endpoint: http://localhost:8000/api/v1/health  
+Ready endpoint: http://localhost:8000/api/v1/ready  
+Metrics: http://localhost:8000/metrics
 
 ## Environment configuration
 
-The project uses environment variables from a root `.env` file. The template is located at `.env.example`.
+The project uses environment variables from a root `.env` file. The template is located at `.env.example`. Every variable, and the production template `.env.production.example`, is described in [docs/configuration.md](docs/configuration.md).
 
 Important rules:
 
@@ -228,12 +248,23 @@ pytest
 
 The API tests use an isolated in-memory SQLite database and a mocked Redis rate limiter. They never connect to the configured development or production database.
 
+Other checks:
+
+```powershell
+python -m ruff check app perf scripts tests                                  # lint
+python -m pip_audit --requirement constraints.txt --no-deps --disable-pip    # known vulnerabilities
+$env:TEST_DATABASE_URL = "postgresql+psycopg://user:pass@localhost:5432/autowok_test"; pytest   # same suite on PostgreSQL
+```
+
+`TEST_DATABASE_URL` must name a database containing "test": every table is dropped and recreated for each test. `tests/test_phase12_e2e.py` runs the complete workflow from registration to a reviewed AI deliverable with mocked Meta and Groq.
+
 ## Frontend tests, validation, and build
 
 ```powershell
 cd frontend
 npm run lint
 npm test
+npx next typegen
 npx tsc --noEmit
 npm run build
 ```
@@ -369,7 +400,7 @@ Set production secrets and deployment-specific values outside source control. Do
 
 ### Security limitations
 
-Email verification delivery, password recovery, invitations, MFA, ownership transfer, workspace deletion, and refresh-token/JWT infrastructure are deliberately not implemented. Session expiration and revocation are enforced by the API on every authenticated request. Rate limiting uses the direct peer IP; deployments behind reverse proxies should configure trusted proxy handling at the infrastructure boundary rather than trusting arbitrary forwarded headers.
+Email verification delivery, password recovery, invitations, MFA, ownership transfer, workspace deletion, and refresh-token/JWT infrastructure are deliberately not implemented. Session expiration and revocation are enforced by the API on every authenticated request. Rate limiting before sign-in uses the client address; the production image trusts forwarded addresses only from the configured proxy (`FORWARDED_ALLOW_IPS`). Limits for signed-in users are per user.
 
 Manual smoke test:
 
@@ -394,8 +425,10 @@ With Docker Compose, the `worker` service starts automatically. It needs the sam
 
 ## Troubleshooting
 
+The full guide is [docs/troubleshooting.md](docs/troubleshooting.md). Common local issues:
+
 - If Python is not in PATH, use the full path to the interpreter.
-- If the database is not ready, the backend ready endpoint will return a degraded status.
+- If the database is not ready, the ready endpoint returns HTTP 503 with a degraded status.
 - If Docker is unavailable, use the backend and frontend directly with their standalone commands.
 - If port 3000 or 8000 is already in use, stop the conflicting service or update the `.env` file values.
 
@@ -419,14 +452,14 @@ Do not connect or push a remote without explicit permission.
 - Phase 3: Meta OAuth for Facebook Pages and linked Instagram Professional accounts, plus Groq provider foundations (implemented; live vendor setup remains environment-dependent).
 - Phase 4: Research, source extraction, and citations (implemented; live providers remain environment-dependent).
 - Phase 5: Content projects and drafts, version history, platform validation, and approval workflows (implemented).
-- Phase 6: AI ideation, writing, repurposing, critique, and fact-checking.
+- Phase 6: AI ideation, writing, repurposing, critique, and fact-checking (API only, rule-based: these tools do not call Groq and have no screens; model-backed generation is in the content studio and the Phase 11 workflows).
 - Phase 7: Studio, media handling, previews, and first publishing workflow (implemented; live Meta publishing not verified).
 - Phase 8: Calendar, scheduling, retries, and queue recovery (implemented; live Meta publishing not verified).
 - Phase 9: Analytics, performance tracking, and reporting for Facebook Pages and Instagram (implemented; live Meta insights not verified).
 - Phase 10: Controlled workflow automations and rule-based execution (implemented; PostgreSQL migration not applied live in this environment).
 - Phase 11: Multi-agent AI intelligence and orchestration (implemented; verified with mocked Groq responses, live Groq and PostgreSQL migration not verified in this environment).
+- Phase 12: Production optimization, security hardening, monitoring, backups, accessibility and deployment readiness (implemented; verified locally, not deployed to staging or production).
 - Later phases (not started): additional social platforms according to customer demand, and further AI capabilities.
-- Phase 13: Optimization, accessibility, monitoring, backups, and advanced features.
 
 ## Later-phase exclusions
 
