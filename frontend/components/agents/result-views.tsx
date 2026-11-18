@@ -99,7 +99,7 @@ export function DraftVersions({ versions }: { versions?: DraftVersion[] | null }
     <div className="grid gap-4 md:grid-cols-2">
       {versions.map((version) => (
         <article key={version.platform} className="rounded-xl border border-slate-200 p-4">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{version.platform}</p>
+          <p className="text-xs font-semibold text-slate-500">{version.platform}</p>
           <p className="mt-2 font-semibold">{version.hook}</p>
           <p className="mt-2 whitespace-pre-wrap text-slate-700">{version.body}</p>
           {version.cta && <p className="mt-2 font-medium text-slate-900">{version.cta}</p>}

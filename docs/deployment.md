@@ -2,6 +2,8 @@
 
 How to deploy a fresh Autowok environment (staging or production), release a new version, and roll back. The stack is not tied to a cloud provider: any Linux host with Docker Engine and Docker Compose v2 can run it.
 
+**Phase 13 note.** Step-by-step guides for staging and production, the release and rollback script (`scripts/deploy/deploy.sh`), the configuration check and the launch checklist are in [deployment/](deployment/READINESS_AUDIT.md). Prefer `scripts/deploy/deploy.sh release` over the manual release commands below: it adds the configuration check and records the release for rollback. The `backup` job now uses the `postgres:16` image.
+
 **Verification status.** The stack described here was built and run on a developer workstation (Docker Desktop) behind the bundled proxy with a locally issued certificate: see [Local verification](#what-was-verified-locally). It has **not** been deployed to a staging or production server, and no public certificate, DNS record or cloud resource has been created.
 
 ## What runs where

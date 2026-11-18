@@ -15,6 +15,17 @@ type WorkspaceInfo = {
   owner_id: string;
 };
 
+type Invitation = {
+  id: string;
+  email: string;
+  role: string;
+  status: string;
+  email_sent: boolean;
+  expires_at: string;
+};
+
+type CreatedInvitation = Invitation & { invite_url: string; email_error: string | null };
+
 function manageableRole(value: string): "ADMIN" | "MEMBER" | null {
   return value === "ADMIN" || value === "MEMBER" ? value : null;
 }
@@ -33,6 +44,9 @@ export default function WorkspaceDetailsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [invitations, setInvitations] = useState<Invitation[]>([]);
+  const [shareLink, setShareLink] = useState<{ email: string; url: string; reason: string | null } | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const loadWorkspace = useCallback(async (showLoading = false) => {
     if (showLoading) {
@@ -47,6 +61,10 @@ export default function WorkspaceDetailsPage() {
       setEditedName(details.name);
       setMembers(memberList);
       setError(null);
+      // Pending invitations are visible to admins only; members simply see none.
+      setInvitations(
+        await apiRequest<Invitation[]>(`/workspaces/${workspaceId}/invitations`).catch(() => []),
+      );
     } catch (loadError) {
       setError(
         loadError instanceof ApiError
@@ -63,10 +81,43 @@ export default function WorkspaceDetailsPage() {
     return () => window.clearTimeout(timer);
   }, [loadWorkspace]);
 
+  async function inviteByEmail() {
+    const invitedEmail = email.trim();
+    try {
+      const created = await apiRequest<CreatedInvitation>(`/workspaces/${workspaceId}/invitations`, {
+        method: "POST",
+        body: JSON.stringify({ email: invitedEmail, role: newRole }),
+      });
+      setEmail("");
+      if (created.email_sent) {
+        setSuccess(`Invitation emailed to ${created.email}. They join when they open the link and sign in with that address.`);
+      } else {
+        setShareLink({ email: created.email, url: created.invite_url, reason: created.email_error });
+      }
+      await loadWorkspace();
+    } catch (inviteError) {
+      setError(inviteError instanceof ApiError ? inviteError.message : "The invitation could not be created.");
+    }
+  }
+
+  async function revokeInvitation(invitation: Invitation) {
+    setError(null);
+    setSuccess(null);
+    try {
+      await apiRequest(`/workspaces/${workspaceId}/invitations/${invitation.id}`, { method: "DELETE" });
+      setSuccess(`Invitation for ${invitation.email} cancelled.`);
+      await loadWorkspace();
+    } catch (revokeError) {
+      setError(revokeError instanceof ApiError ? revokeError.message : "The invitation could not be cancelled.");
+    }
+  }
+
   async function addMember(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
     setSuccess(null);
+    setShareLink(null);
+    setCopied(false);
     try {
       await apiRequest(`/workspaces/${workspaceId}/members`, {
         method: "POST",
@@ -76,6 +127,11 @@ export default function WorkspaceDetailsPage() {
       setSuccess("Member added.");
       await loadWorkspace(true);
     } catch (changeError) {
+      if (changeError instanceof ApiError && changeError.status === 404) {
+        // No account uses this address yet: send an invitation instead.
+        await inviteByEmail();
+        return;
+      }
       setError(
         changeError instanceof ApiError
           ? changeError.message
@@ -215,8 +271,8 @@ export default function WorkspaceDetailsPage() {
                             }}
                             className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
                           >
-                            <option value="MEMBER">MEMBER</option>
-                            <option value="ADMIN">ADMIN</option>
+                            <option value="MEMBER">Member</option>
+                            <option value="ADMIN">Admin</option>
                           </select>
                           <button
                             onClick={() => void removeMember(member.user_id)}
@@ -262,9 +318,9 @@ export default function WorkspaceDetailsPage() {
                 onSubmit={addMember}
                 className="mt-6 max-w-2xl rounded-2xl border border-slate-200 bg-white p-6"
               >
-                <h2 className="font-semibold">Add a registered user</h2>
+                <h2 className="font-semibold">Add or invite a member</h2>
                 <p className="mt-1 text-sm text-slate-500">
-                  Invitations by email are not available yet.
+                  Someone who already has an Autowok account is added straight away. Anyone else gets an invitation email with a link to join.
                 </p>
                 <div className="mt-4 flex flex-col gap-3 sm:flex-row">
                   <input
@@ -288,14 +344,52 @@ export default function WorkspaceDetailsPage() {
                     }}
                     className="rounded-xl border border-slate-300 px-3 py-2"
                   >
-                    <option value="MEMBER">MEMBER</option>
-                    <option value="ADMIN">ADMIN</option>
+                    <option value="MEMBER">Member</option>
+                    <option value="ADMIN">Admin</option>
                   </select>
                   <button className="rounded-xl bg-indigo-600 px-4 py-2 font-semibold text-white">
-                    Add member
+                    Add or invite
                   </button>
                 </div>
               </form>
+            )}
+            {shareLink && (
+              <div role="status" className="mt-5 max-w-2xl rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900">
+                <p className="font-semibold">Invitation created for {shareLink.email}, but the email was not sent.</p>
+                {shareLink.reason && <p className="mt-1">{shareLink.reason}</p>}
+                <p className="mt-3">Send them this link yourself. It is shown only once and works only for that email address:</p>
+                <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+                  <input readOnly aria-label="Invitation link" value={shareLink.url} onFocus={(event) => event.target.select()} className="min-w-0 flex-1 rounded-xl border border-amber-300 bg-white px-3 py-2 text-slate-900" />
+                  <button
+                    type="button"
+                    onClick={() => void navigator.clipboard.writeText(shareLink.url).then(() => setCopied(true)).catch(() => setCopied(false))}
+                    className="rounded-xl bg-slate-900 px-4 py-2 font-semibold text-white hover:bg-slate-800"
+                  >
+                    {copied ? "Copied" : "Copy link"}
+                  </button>
+                </div>
+              </div>
+            )}
+            {canManage && invitations.length > 0 && (
+              <section className="mt-6 max-w-2xl rounded-2xl border border-slate-200 bg-white p-6">
+                <h2 className="font-semibold">Pending invitations</h2>
+                <ul className="mt-3 divide-y divide-slate-100">
+                  {invitations.map((invitation) => (
+                    <li key={invitation.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
+                      <div className="min-w-0">
+                        <p className="truncate font-medium">{invitation.email}</p>
+                        <p className="text-sm text-slate-500">
+                          {invitation.role === "ADMIN" ? "Admin" : "Member"}, {invitation.status === "expired" ? "expired" : `expires ${new Date(invitation.expires_at).toLocaleDateString()}`}
+                          {invitation.email_sent ? ", email sent" : ", email not sent"}
+                        </p>
+                      </div>
+                      <button type="button" onClick={() => void revokeInvitation(invitation)} className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium hover:bg-slate-50">
+                        Cancel invitation
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </section>
             )}
           </>
         ) : null}

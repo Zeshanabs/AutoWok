@@ -16,6 +16,7 @@ class ResearchEngineService:
     def __init__(self, db: DBSession, *, settings: Any | None = None) -> None:
         self.db = db
         self.settings = settings or get_settings()
+        self.search_requests = 0
 
     def build_query_plan(self, project: ResearchProject) -> list[str]:
         questions = [project.research_question.strip()]
@@ -58,11 +59,23 @@ class ResearchEngineService:
             )
         return config
 
+    def clear_previous_run(self, project: ResearchProject) -> None:
+        """Remove the results of an earlier run so running again does not duplicate them."""
+        for model in (ResearchFinding, ResearchSource, ResearchQuery):
+            self.db.query(model).filter(model.research_id == project.id).delete(synchronize_session=False)
+        self.db.flush()
+
     def search(self, project: ResearchProject) -> list[SearchResult]:
         config = self.ensure_search_provider()
         provider = ConfiguredSearchProvider(config)
         results: list[SearchResult] = []
-        for query in self.build_query_plan(project):
+        self.search_requests = 0
+        plan = self.build_query_plan(project)
+        if config.name.strip().lower() == "groq":
+            # One Groq search is token-heavy; never fan out into several.
+            plan = plan[:1]
+        for query in plan:
+            self.search_requests += 1
             for result in provider.search(query, max_results=config.max_results, timeout_seconds=config.timeout_seconds):
                 if not result.url:
                     continue
@@ -73,6 +86,67 @@ class ResearchEngineService:
                 if len(results) >= config.max_results:
                     return results
         return results
+
+    def create_source_report(
+        self,
+        project: ResearchProject,
+        sources: list[ResearchSource],
+        *,
+        provider_name: str,
+    ) -> ResearchReport:
+        """Report built only from what the search returned: no invented claims.
+
+        Each source with a summary becomes one finding that cites it. The text
+        is the search provider's summary of the page, not a verified fact, and
+        the report says so.
+        """
+        # Reuse the report of an earlier run: content projects may link to it.
+        report = self.db.query(ResearchReport).filter(ResearchReport.research_id == project.id).first()
+        if report is None:
+            report = ResearchReport(research_id=project.id)
+            self.db.add(report)
+        for column in ("trends", "opportunities", "risks", "audience_insights", "competitor_insights", "content_angles"):
+            setattr(report, column, [])
+        report.generated_by_model = provider_name
+
+        if not sources:
+            report.executive_summary = (
+                f"The search for \"{project.research_question}\" returned no usable sources. "
+                "Try a broader or differently worded research question."
+            )
+            report.key_findings = []
+            report.limitations = [f"No sources were returned by the {provider_name} search provider for this question."]
+            self.db.flush()
+            return report
+
+        key_findings: list[str] = []
+        for source in sources:
+            if not source.snippet:
+                continue
+            claim = source.snippet if len(source.snippet) <= 400 else source.snippet[:397].rstrip() + "..."
+            self.persist_finding(
+                project,
+                finding_type="source_summary",
+                claim=claim,
+                explanation=f"Summary of \"{source.title}\" ({source.domain}) as returned by the search provider.",
+                supporting_source_ids=[str(source.id)],
+                confidence_label="LOW",
+            )
+            if len(key_findings) < 8:
+                key_findings.append(f"{source.title} ({source.domain}): {claim}")
+        domains = sorted({source.domain for source in sources if source.domain})
+        report.executive_summary = (
+            f"Found {len(sources)} sources from {len(domains)} websites for \"{project.research_question}\". "
+            "The findings below are the search provider's summaries of those pages. "
+            "Open the sources to check each claim before using it in content."
+        )
+        report.key_findings = key_findings
+        report.limitations = [
+            "Findings are summaries returned by the search provider; they have not been fact-checked or analysed by an AI model.",
+            "Source quality and publication dates have not been reviewed.",
+        ]
+        self.db.flush()
+        return report
 
     def create_default_report(self, project: ResearchProject, *, generated_by_model: str | None = None) -> ResearchReport:
         report = ResearchReport(

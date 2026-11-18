@@ -243,19 +243,21 @@ def run_research_project(
         db.commit()
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
 
-    service.create_queries(project)
-    results = service.search(project)
-    project.status = ResearchStatus.RETRIEVING.value
-    project.current_stage = ResearchStatus.RETRIEVING.value
-    project.updated_at = datetime.now(timezone.utc)
-    if results:
-        for result in results:
-            service.persist_source_result(project, result)
+    try:
+        results = service.search(project)
+    except RuntimeError as exc:
+        # The provider refused, timed out or is misconfigured. Earlier results are kept.
+        project.status = ResearchStatus.FAILED.value
+        project.current_stage = ResearchStatus.FAILED.value
+        project.updated_at = datetime.now(timezone.utc)
+        db.commit()
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
 
-    project.status = ResearchStatus.ANALYZING.value
-    project.current_stage = ResearchStatus.ANALYZING.value
-    project.updated_at = datetime.now(timezone.utc)
-    service.create_default_report(project, generated_by_model=(provider_config.name or "configured"))
+    service.clear_previous_run(project)
+    service.create_queries(project)
+    sources = [service.persist_source_result(project, result) for result in results]
+    service.create_source_report(project, sources, provider_name=provider_config.name)
+    service.create_usage_log(project, provider_name=provider_config.name, status="COMPLETED", search_requests=service.search_requests)
 
     project.status = ResearchStatus.COMPLETED.value
     project.current_stage = ResearchStatus.COMPLETED.value

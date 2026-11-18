@@ -91,7 +91,7 @@ export default function WorkflowHistoryPage() {
           <>
             <div className="mt-6 overflow-x-auto rounded-2xl border border-slate-200 bg-white">
               <table className="min-w-full text-left text-sm">
-                <thead className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
+                <thead className="border-b border-slate-200 text-xs text-slate-500">
                   <tr>
                     <th scope="col" className="px-4 py-3">Workflow</th>
                     <th scope="col" className="px-4 py-3">Status</th>

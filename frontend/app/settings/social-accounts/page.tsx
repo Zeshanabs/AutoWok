@@ -338,7 +338,7 @@ export default function SocialAccountsPage() {
                         >
                           <div className="flex items-start justify-between gap-3">
                             <div>
-                              <p className="text-xs font-semibold uppercase tracking-wide text-indigo-700">
+                              <p className="text-xs font-semibold text-indigo-700">
                                 {account.platform === "facebook_page"
                                   ? "Facebook Page"
                                   : "Instagram Professional"}

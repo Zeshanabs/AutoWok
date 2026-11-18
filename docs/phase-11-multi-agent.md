@@ -380,10 +380,10 @@ cd frontend; npx vitest run app/dashboard/ai-agents
 - **Live Groq is not verified.** No `GROQ_API_KEY` was configured in the development environment, so
   every run used mocked responses. Prompt quality, JSON reliability and token use with a real model are
   untested.
-- **The Phase 4 search provider returns no results.** `ConfiguredSearchProvider.search` validates
-  configuration but has no live provider behind it yet. The Research Agent calls it correctly (tested
-  with a stubbed provider), but until a real provider exists, new research has no sources and findings
-  are labelled as assumptions. Selecting existing research with stored sources works.
+- **The search provider needs a key and is unverified live.** `ConfiguredSearchProvider.search` calls
+  Tavily or Brave when `RESEARCH_SEARCH_PROVIDER` and `RESEARCH_SEARCH_API_KEY` are set (tested with
+  simulated answers only). Without a key, new research has no sources and findings are labelled as
+  assumptions. Selecting existing research with stored sources works.
 - **PostgreSQL and Docker are not verified.** The migration was applied, compared with the models and
   downgraded on SQLite; it was not run on PostgreSQL, and Docker Compose was not started.
 - Fact-checking compares claims with stored source snippets (up to 500 characters each, 12 sources). It

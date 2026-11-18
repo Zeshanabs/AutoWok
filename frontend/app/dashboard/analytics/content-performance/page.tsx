@@ -43,7 +43,7 @@ function AISummarySection() {
       )}
       {summary && (
         <div className="mt-3 rounded-lg bg-slate-50 p-3 text-sm">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{summary.label}</p>
+          <p className="text-xs font-semibold text-slate-500">{summary.label}</p>
           {summary.available ? <p className="mt-2 whitespace-pre-wrap text-slate-800">{summary.text}</p> : <p className="mt-2 text-slate-600">Not available: {summary.reason}</p>}
           {summary.model && <p className="mt-2 text-xs text-slate-500">Model: {summary.model}</p>}
         </div>

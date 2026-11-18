@@ -192,6 +192,15 @@ class Settings(BaseSettings):
     rate_limit_publish_per_hour: int = Field(default=60, ge=1, le=10000, alias="RATE_LIMIT_PUBLISH_PER_HOUR")
     rate_limit_schedule_per_hour: int = Field(default=240, ge=1, le=10000, alias="RATE_LIMIT_SCHEDULE_PER_HOUR")
     rate_limit_export_per_hour: int = Field(default=30, ge=1, le=10000, alias="RATE_LIMIT_EXPORT_PER_HOUR")
+    # Outgoing email (workspace invitations). Empty SMTP_HOST = email is off.
+    smtp_host: str = Field(default="", alias="SMTP_HOST")
+    smtp_port: int = Field(default=587, ge=1, le=65535, alias="SMTP_PORT")
+    smtp_username: str = Field(default="", alias="SMTP_USERNAME")
+    smtp_password: str = Field(default="", alias="SMTP_PASSWORD")
+    smtp_from: str = Field(default="", alias="SMTP_FROM")
+    smtp_security: Literal["starttls", "ssl", "none"] = Field(default="starttls", alias="SMTP_SECURITY")
+    smtp_timeout_seconds: int = Field(default=20, ge=1, le=120, alias="SMTP_TIMEOUT_SECONDS")
+    invitation_expiry_days: int = Field(default=7, ge=1, le=60, alias="INVITATION_EXPIRY_DAYS")
     rate_limit_member_add_per_hour: int = Field(default=20, ge=1, le=10000, alias="RATE_LIMIT_MEMBER_ADD_PER_HOUR")
     rate_limit_provider_test_per_hour: int = Field(default=30, ge=1, le=10000, alias="RATE_LIMIT_PROVIDER_TEST_PER_HOUR")
     rate_limit_automation_test_per_hour: int = Field(

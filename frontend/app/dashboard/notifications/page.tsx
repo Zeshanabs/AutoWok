@@ -103,7 +103,7 @@ export default function NotificationsPage() {
       <AppShell>
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-indigo-700">Inbox</p>
+            <p className="eyebrow">Inbox</p>
             <h1 className="mt-2 text-3xl font-bold tracking-tight">Notifications and tasks</h1>
             <p className="mt-1 text-sm text-slate-600">Approval reminders, publishing failures, assignments and automation alerts for this workspace.</p>
           </div>
@@ -138,7 +138,7 @@ export default function NotificationsPage() {
                       <li key={item.id} className={`rounded-xl border p-3 text-sm ${item.read_at ? "border-slate-200" : "border-indigo-200 bg-indigo-50/40"}`}>
                         <div className="flex flex-wrap items-start justify-between gap-2">
                           <div>
-                            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{CATEGORY_LABELS[item.category] ?? item.category}</p>
+                            <p className="text-xs font-semibold text-slate-500">{CATEGORY_LABELS[item.category] ?? item.category}</p>
                             <p className="font-medium">{item.title}</p>
                             <p className="text-slate-700">{item.message}</p>
                             <p className="mt-1 text-xs text-slate-500">{new Date(item.created_at).toLocaleString()}</p>

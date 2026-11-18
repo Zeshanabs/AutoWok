@@ -210,7 +210,10 @@ services:
   # One-shot: encrypted database + media backup. See docs/backup-recovery.md.
   #   docker compose --env-file .env.production -f docker-compose.prod.yml run --rm backup
   backup:
-    image: postgres:16-alpine
+    # The Debian image, not "-alpine": it already contains openssl, which the
+    # scripts need for encryption. This job runs on the internal network, which
+    # has no internet access, so nothing can be installed when it starts.
+    image: postgres:16
     entrypoint: ["sh", "/scripts/backup.sh"]
     environment:
       PGHOST: postgres

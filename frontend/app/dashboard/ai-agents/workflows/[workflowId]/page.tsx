@@ -62,12 +62,12 @@ function StepRow({ step }: { step: WorkflowStep }) {
         <div className="mt-3 space-y-3">
           {execution.evidence.length > 0 && (
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Evidence</p>
+              <p className="text-xs font-semibold text-slate-500">Evidence</p>
               <div className="mt-1"><EvidenceList evidence={execution.evidence} /></div>
             </div>
           )}
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Structured output</p>
+            <p className="text-xs font-semibold text-slate-500">Structured output</p>
             <pre className="mt-1 max-h-96 overflow-auto rounded-lg bg-slate-900 p-3 text-xs text-slate-100">{JSON.stringify(execution.result, null, 2)}</pre>
           </div>
         </div>
@@ -190,7 +190,7 @@ export default function WorkflowExecutionPage() {
             <section className="rounded-2xl border border-slate-200 bg-white p-5">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Requested task</p>
+                  <p className="text-xs font-semibold text-slate-500">Requested task</p>
                   <p className="mt-1 text-sm text-slate-800">{workflow.task}</p>
                 </div>
                 <StatusBadge status={workflow.status} />

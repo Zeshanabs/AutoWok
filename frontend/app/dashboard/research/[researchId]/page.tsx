@@ -79,7 +79,7 @@ export default function ResearchDetailPage() {
       <AppShell>
         <div className="mb-6 flex items-center justify-between gap-4">
           <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-indigo-700">
+            <p className="eyebrow">
               Research report
             </p>
             <h1 className="mt-2 text-3xl font-bold tracking-tight">
@@ -194,7 +194,7 @@ export default function ResearchDetailPage() {
                     <div key={finding.id} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                       <p className="font-semibold">{finding.claim}</p>
                       <p className="mt-2 text-sm text-slate-600">{finding.explanation || "No explanation provided."}</p>
-                      <p className="mt-2 text-xs font-medium uppercase tracking-[0.12em] text-slate-500">
+                      <p className="mt-2 text-xs font-medium text-slate-500">
                         {finding.finding_type} · {finding.confidence_label}
                       </p>
                     </div>

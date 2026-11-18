@@ -1,8 +1,10 @@
 # CI/CD
 
-Two GitHub Actions workflows: `ci.yml` checks every change, `deploy-staging.yml` deploys to staging when a person starts it. Nothing deploys automatically, and there is no production deployment workflow.
+Three GitHub Actions workflows: `ci.yml` checks every change; `deploy-staging.yml` and `deploy-production.yml` deploy only when a person starts them and a reviewer approves. Nothing deploys automatically.
 
-**Verification status.** The repository has no remote, so neither workflow has run on GitHub. Every command in `ci.yml` was run locally on 2026-11-16 (results below), except the Trivy image scan, which needs the GitHub runner. `deploy-staging.yml` has not been executed at all: it needs a staging server and secrets.
+**Verification status (updated 2026-11-17, Phase 13).** The repository now has a GitHub remote, so `ci.yml` runs on pushes to `main` and on pull requests; its results on GitHub were not confirmed from the development workstation (check the Actions tab). Every command in `ci.yml` was run locally on 2026-11-16 (results below), except the Trivy image scan, which needs the GitHub runner. The two deployment workflows have never run: they need a server and GitHub environment secrets, which do not exist.
+
+Phase 13 added to the `docker` job: an offline check that the backup job's image contains its tools, a syntax check of the deployment scripts, the configuration preflight (`scripts/deploy/preflight.sh`) against both the unfilled template (must fail) and a complete generated configuration (must pass, including the application's own start-up validation), and a downloadable deployment bundle (Compose file, proxy configuration, scripts; no secrets).
 
 ## `ci.yml`: checks on every pull request and push to `main`
 
@@ -57,7 +59,7 @@ cd backend && TEST_DATABASE_URL=postgresql+psycopg://user:pass@localhost:5432/au
 
 * Trigger: `workflow_dispatch` only, with the commit to deploy and whether to run migrations.
 * Approval: both jobs use the `staging` GitHub environment. Configure that environment with required reviewers so a second person approves each run.
-* Steps: build both images for the chosen commit and push them to GitHub Container Registry tagged with the commit; then, over SSH on the staging server: pull, **back up**, migrate, `up -d`, and wait for `/api/v1/ready`. The job fails if the new version does not become ready.
+* Steps: build both images for the chosen commit and push them to GitHub Container Registry tagged with the commit; copy the deployment files for that commit to the server; then, over SSH, run `scripts/deploy/deploy.sh release`, which pulls, checks the configuration, **backs up** (skipped only when the database is still empty), migrates, starts, waits for `/api/v1/ready` and a healthy worker, and records the release for rollback. The job fails if any step fails.
 * Secrets (environment secrets, never in the repository): `STAGING_SSH_HOST`, `STAGING_SSH_USER`, `STAGING_SSH_KEY`, `STAGING_SSH_KNOWN_HOSTS`, `STAGING_DEPLOY_PATH`; variable `STAGING_PUBLIC_ORIGIN`.
 * The server's `.env.production` is managed on the server. The workflow never writes application secrets.
 
@@ -65,7 +67,7 @@ Before first use: create the staging server ([deployment.md](deployment.md)), lo
 
 ### Production
 
-There is deliberately no production workflow. When you add one, copy the staging workflow with a `production` environment, its own secrets and reviewers, and deploy only image tags that were already verified on staging (same commit, same images, no rebuild).
+`deploy-production.yml` exists but is inactive: it cannot run until the owner creates the `production` GitHub environment, its secrets and a server. It is manual only and gated three ways: a typed confirmation phrase, a successful `Autowok CI` run for the chosen commit, and the environment's required reviewers. It reuses the backend image that staging verified (same commit tag) and builds the web image again, because the public address is compiled into the web bundle and differs between staging and production. See [deployment/PRODUCTION_DEPLOYMENT.md](deployment/PRODUCTION_DEPLOYMENT.md).
 
 ## Dependency updates
 

@@ -27,6 +27,7 @@ from app.api.v1.routes.publishing import router as publishing_router
 from app.api.v1.routes.research import router as research_router
 from app.api.v1.routes.scheduling import router as scheduling_router
 from app.api.v1.routes.social_accounts import router as social_accounts_router
+from app.api.v1.routes.invitations import router as invitations_router
 from app.api.v1.routes.workspaces import router as workspaces_router
 from app.api.v1.routes.client_errors import router as client_errors_router
 from app.api.v1.routes.health import require_monitoring_token
@@ -83,6 +84,7 @@ if settings.allowed_hosts_list:
 app.include_router(health_router, prefix=settings.api_v1_prefix)
 app.include_router(auth_router, prefix=settings.api_v1_prefix)
 app.include_router(workspaces_router, prefix=settings.api_v1_prefix)
+app.include_router(invitations_router, prefix=settings.api_v1_prefix)
 app.include_router(brands_router, prefix=settings.api_v1_prefix)
 app.include_router(ai_providers_router, prefix=settings.api_v1_prefix)
 app.include_router(groq_providers_router, prefix=settings.api_v1_prefix)

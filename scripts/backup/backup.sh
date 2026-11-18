@@ -31,7 +31,9 @@ if [ -z "${BACKUP_PASSPHRASE:-}" ] && [ "${BACKUP_ALLOW_UNENCRYPTED:-0}" != "1" 
   exit 2
 fi
 if [ -n "${BACKUP_PASSPHRASE:-}" ] && ! command -v openssl >/dev/null 2>&1; then
-  apk add --no-cache openssl >/dev/null 2>&1 || { echo "openssl is required for encryption." >&2; exit 2; }
+  # Works only where the container has internet access; the production "backup"
+  # service has none and uses an image that already contains openssl.
+  apk add --no-cache openssl >/dev/null 2>&1 || { echo "openssl is required for encryption and is not installed in this image." >&2; exit 2; }
 fi
 
 umask 077

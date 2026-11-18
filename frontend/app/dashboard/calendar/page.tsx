@@ -229,7 +229,7 @@ export default function CalendarPage() {
       <AppShell>
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-indigo-700">Calendar</p>
+            <p className="eyebrow">Calendar</p>
             <h1 className="mt-2 text-3xl font-bold tracking-tight">Content calendar</h1>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -294,7 +294,7 @@ export default function CalendarPage() {
                 ) : view === "month" ? (
                   <>
                     <div className="hidden overflow-hidden rounded-2xl border border-slate-200 bg-white md:block">
-                      <div className="grid grid-cols-7 border-b border-slate-200 bg-slate-50 text-center text-xs font-semibold uppercase text-slate-500">
+                      <div className="grid grid-cols-7 border-b border-slate-200 bg-slate-50 text-center text-xs font-semibold text-slate-500">
                         {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day) => <div key={day} className="py-2">{day}</div>)}
                       </div>
                       <div className="grid grid-cols-7">

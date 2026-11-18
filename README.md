@@ -97,6 +97,33 @@ Behaviour changes that users or API clients can notice:
 - The interactive API documentation (`/docs`) is off in production.
 - Unexpected errors return a generic message with a `request_id`.
 
+## Phase 13: Deployment preparation
+
+**Status: PREPARATION PASSED.** Deployment configuration, scripts, workflows and documentation are ready and were rehearsed on a local copy of the production stack. **Nothing has been deployed**: no staging or production server, domain or account exists, and Facebook, Instagram and Groq have not been tested with real credentials. No new product features.
+
+| Read this | For |
+|---|---|
+| [docs/deployment/READINESS_AUDIT.md](docs/deployment/READINESS_AUDIT.md) | What is ready, what needs fixing, what is blocked, what needs the owner's decision |
+| [docs/deployment/PRODUCTION_ARCHITECTURE.md](docs/deployment/PRODUCTION_ARCHITECTURE.md) | The recommended production design and its limitations |
+| [docs/deployment/HOSTING_COMPARISON.md](docs/deployment/HOSTING_COMPARISON.md) | Providers, free tiers and estimated monthly costs |
+| [docs/deployment/ENVIRONMENT_VARIABLES.md](docs/deployment/ENVIRONMENT_VARIABLES.md) | Every production setting, generating secrets, checking a configuration |
+| [docs/deployment/DATABASE_DEPLOYMENT.md](docs/deployment/DATABASE_DEPLOYMENT.md) | Production PostgreSQL, running and reverting migrations |
+| [docs/deployment/BACKUP_AND_RECOVERY.md](docs/deployment/BACKUP_AND_RECOVERY.md) | Backup schedule, retention, off-server copies, restore |
+| [docs/deployment/STAGING_DEPLOYMENT.md](docs/deployment/STAGING_DEPLOYMENT.md) | Setting up staging step by step, the staging test plan, local rehearsal results |
+| [docs/deployment/PRODUCTION_DEPLOYMENT.md](docs/deployment/PRODUCTION_DEPLOYMENT.md) | Domain, DNS, HTTPS, Meta App Review, going live |
+| [docs/deployment/ROLLBACK_PROCEDURE.md](docs/deployment/ROLLBACK_PROCEDURE.md) | What to do when a release goes wrong |
+| [docs/deployment/PRODUCTION_CHECKLIST.md](docs/deployment/PRODUCTION_CHECKLIST.md) | The launch checklist |
+
+New operational tools (all run on the server, none contains a secret):
+
+```sh
+sh scripts/deploy/generate-secrets.sh                      # print fresh secrets for .env.production
+sh scripts/deploy/preflight.sh                             # check a configuration; prints setting names only
+sh scripts/deploy/deploy.sh release <backend> <frontend>   # back up, migrate, start, verify, record
+sh scripts/deploy/deploy.sh rollback                       # return to the previous images
+sh scripts/deploy/deploy.sh status
+```
+
 ## Folder structure
 
 ```text
@@ -105,7 +132,8 @@ autowok/
 │   ├── dependabot.yml
 │   └── workflows/
 │       ├── ci.yml                  checks on every change
-│       └── deploy-staging.yml      manual, approved staging deployment
+│       ├── deploy-staging.yml      manual, approved staging deployment
+│       └── deploy-production.yml   manual, approved production deployment (inactive until set up)
 ├── backend/
 │   ├── alembic/versions/           database migrations
 │   ├── app/

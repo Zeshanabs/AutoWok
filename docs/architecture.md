@@ -298,6 +298,6 @@ Do not commit `.env` or use secrets in public frontend variables. Direct backend
 
 Not implemented: email verification delivery, password recovery, account invitations, MFA, workspace deletion, ownership transfer, an email action for automations, object storage for media, and data retention for sessions, audit logs and automation events.
 
-Verified only against mocks: Meta OAuth, publishing and insights; Groq inference. The Phase 4 search provider returns no live results, so new research has no sources. The Phase 6 content intelligence tools are rule-based and do not call Groq.
+Verified only against mocks: Meta OAuth, publishing and insights; Groq inference. Research web search (Tavily or Brave) is also verified only against simulated answers and needs a provider key to return sources. The Phase 6 content intelligence tools are rule-based and do not call Groq.
 
 Verified locally only: PostgreSQL migrations and the full test suite on PostgreSQL 16; the production container stack behind the bundled proxy; backup and restore. Nothing has been deployed to staging or production. Details and the full list of open items: the Phase 12 documents ([deployment](deployment.md), [security assessment](security/security-assessment.md), [performance](performance-report.md), [accessibility](accessibility-report.md), [dependencies](dependency-audit.md)).

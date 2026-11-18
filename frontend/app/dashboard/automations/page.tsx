@@ -48,7 +48,7 @@ export default function AutomationsPage() {
       <AppShell>
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-indigo-700">Automations</p>
+            <p className="eyebrow">Automations</p>
             <h1 className="mt-2 text-3xl font-bold tracking-tight">Workflow automations</h1>
             <p className="mt-1 text-sm text-slate-600">
               Rule-based workflows: a trigger, optional conditions, and allowlisted actions. Automations never publish content or bypass approvals.

@@ -1,0 +1,148 @@
+name: Deploy to production
+
+# Manual only, and gated three times:
+#   1. A person must start it and type the confirmation phrase.
+#   2. The chosen commit must have a successful "Autowok CI" run.
+#   3. The "production" GitHub environment must have required reviewers, so the
+#      run waits for an approval before it can read any production secret.
+#
+# Nothing here runs on push, merge or schedule.
+#
+# Required "production" environment secrets:
+#   PRODUCTION_SSH_HOST, PRODUCTION_SSH_USER, PRODUCTION_SSH_KEY, PRODUCTION_SSH_KNOWN_HOSTS
+#   PRODUCTION_DEPLOY_PATH   directory on the server that holds .env.production
+# Required "production" environment variable:
+#   PRODUCTION_PUBLIC_ORIGIN  for example https://app.example.com
+#
+# The server's .env.production is created by a person on the server; this
+# workflow never reads or writes application secrets.
+#
+# STATUS: INACTIVE. This workflow has never run and cannot run: the "production"
+# environment, its secrets and the production server do not exist. Creating them
+# is a decision for the project owner (docs/deployment/PRODUCTION_DEPLOYMENT.md).
+# Deploy a commit here only after the same commit was verified on staging.
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Commit SHA or tag that was verified on staging"
+        required: true
+      confirm:
+        description: "Type deploy-production to confirm"
+        required: true
+      run_migrations:
+        description: "Apply database migrations before starting the new version"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  packages: write
+  actions: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  checks:
+    name: Confirmation and CI status
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      sha: ${{ steps.sha.outputs.sha }}
+      tag: ${{ steps.sha.outputs.tag }}
+    steps:
+      - name: Confirmation phrase
+        env:
+          CONFIRM: ${{ inputs.confirm }}
+        run: test "$CONFIRM" = "deploy-production" || (echo "Type deploy-production in the confirm field." && exit 1)
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+      - id: sha
+        run: |
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "tag=$(git rev-parse --short=12 HEAD)" >> "$GITHUB_OUTPUT"
+      - name: The commit passed CI
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ steps.sha.outputs.sha }}
+        run: |
+          passed=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml --commit "$SHA" --status success --json databaseId --jq length)
+          test "$passed" -gt 0 || (echo "No successful Autowok CI run exists for $SHA. Production deploys only commits that passed CI." && exit 1)
+
+  build:
+    name: Build and push images
+    needs: checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.checks.outputs.sha }}
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: API/worker image (reuses the image verified on staging when it exists)
+        env:
+          TAG: ${{ needs.checks.outputs.tag }}
+        run: |
+          image=ghcr.io/${GITHUB_REPOSITORY,,}/backend:$TAG
+          if docker manifest inspect "$image" >/dev/null 2>&1; then
+            echo "Reusing $image"
+          else
+            docker build --target runtime -t "$image" backend
+            docker push "$image"
+          fi
+      - name: Web image (the production address is compiled in, so it is built for production)
+        env:
+          TAG: ${{ needs.checks.outputs.tag }}
+          PUBLIC_ORIGIN: ${{ vars.PRODUCTION_PUBLIC_ORIGIN }}
+        run: |
+          test -n "$PUBLIC_ORIGIN" || (echo "Set the PRODUCTION_PUBLIC_ORIGIN environment variable." && exit 1)
+          image=ghcr.io/${GITHUB_REPOSITORY,,}/frontend:production-$TAG
+          docker build --target runtime --build-arg NEXT_PUBLIC_API_BASE_URL="$PUBLIC_ORIGIN" -t "$image" frontend
+          docker push "$image"
+
+  deploy:
+    name: Deploy to the production server
+    needs: [checks, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.checks.outputs.sha }}
+      - name: Configure SSH
+        env:
+          SSH_KEY: ${{ secrets.PRODUCTION_SSH_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.PRODUCTION_SSH_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+      - name: Copy the deployment files (no secrets) to the server
+        env:
+          TARGET: ${{ secrets.PRODUCTION_SSH_USER }}@${{ secrets.PRODUCTION_SSH_HOST }}
+          DEPLOY_PATH: ${{ secrets.PRODUCTION_DEPLOY_PATH }}
+        run: |
+          tar -czf - docker-compose.prod.yml infrastructure/proxy scripts/backup scripts/deploy .env.production.example \
+            | ssh -i ~/.ssh/id_deploy -o StrictHostKeyChecking=yes "$TARGET" "mkdir -p '$DEPLOY_PATH' && tar -xzf - -C '$DEPLOY_PATH'"
+      - name: Back up, migrate, start the new version, verify
+        env:
+          TARGET: ${{ secrets.PRODUCTION_SSH_USER }}@${{ secrets.PRODUCTION_SSH_HOST }}
+          DEPLOY_PATH: ${{ secrets.PRODUCTION_DEPLOY_PATH }}
+          TAG: ${{ needs.checks.outputs.tag }}
+          RUN_MIGRATIONS: ${{ inputs.run_migrations }}
+        run: |
+          repo="ghcr.io/${GITHUB_REPOSITORY,,}"
+          flag=""; [ "$RUN_MIGRATIONS" = "true" ] || flag="--skip-migrations"
+          ssh -i ~/.ssh/id_deploy -o StrictHostKeyChecking=yes "$TARGET" \
+            "cd '$DEPLOY_PATH' && sh scripts/deploy/deploy.sh release '$repo/backend:$TAG' '$repo/frontend:production-$TAG' $flag"

@@ -202,7 +202,7 @@ export function AnalyticsShell({ children }: { children: ReactNode }) {
     <>
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-indigo-700">Analytics</p>
+          <p className="eyebrow">Analytics</p>
           <h1 className="mt-2 text-3xl font-bold tracking-tight">Performance</h1>
           <p className="mt-1 text-sm text-slate-600">Facebook Page and Instagram metrics from Meta, shown per platform with their official definitions.</p>
         </div>

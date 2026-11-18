@@ -11,6 +11,7 @@ import {
 } from "react";
 import { useRouter } from "next/navigation";
 
+import { pathAfterSignIn } from "@/lib/pending-invite";
 import { ApiError, apiRequest } from "@/lib/api";
 import type { CurrentUser, User, Workspace } from "@/lib/auth-types";
 
@@ -147,7 +148,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         body: JSON.stringify({ email, password }),
       });
       await loadUser();
-      router.replace("/dashboard");
+      router.replace(pathAfterSignIn());
     },
     [loadUser, router],
   );
@@ -163,7 +164,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }),
       });
       await loadUser();
-      router.replace("/dashboard");
+      router.replace(pathAfterSignIn());
     },
     [loadUser, router],
   );

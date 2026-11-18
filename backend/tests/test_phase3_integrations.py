@@ -572,10 +572,12 @@ def test_meta_oauth_authorize_is_rate_limited_per_user_and_ip(client, monkeypatc
     register(client, "rate-limited-meta@example.com")
     workspace_id = create_workspace(client)
     responses = [
-        client.get(f"/api/v1/oauth/meta/authorize?workspace_id={workspace_id}")
+        client.get(f"/api/v1/oauth/meta/authorize?workspace_id={workspace_id}", follow_redirects=False)
         for _ in range(11)
     ]
 
-    assert all(response.status_code == 503 for response in responses[:10])
+    # Whether Meta is fully configured depends on the environment (a developer .env may
+    # hold an encryption key): 503 when it is not, a redirect to Meta when it is.
+    assert all(response.status_code in {302, 303, 307, 503} for response in responses[:10]), [r.status_code for r in responses]
     assert responses[10].status_code == 429
     assert responses[10].headers["Retry-After"] == "900"

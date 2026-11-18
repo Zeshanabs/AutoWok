@@ -121,7 +121,7 @@ export default function MediaLibraryPage() {
       <AppShell>
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-indigo-700">Media</p>
+            <p className="eyebrow">Media</p>
             <h1 className="mt-2 text-3xl font-bold tracking-tight">Media library</h1>
             <p className="mt-1 text-sm text-slate-600">
               JPG, PNG, GIF images and MP4/MOV videos. Location and camera metadata is removed from photos on upload.
@@ -225,7 +225,7 @@ export default function MediaLibraryPage() {
             ) : (
               <div className="mt-6 overflow-x-auto rounded-2xl border border-slate-200 bg-white">
                 <table className="w-full min-w-[640px] text-left text-sm">
-                  <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+                  <thead className="bg-slate-50 text-xs text-slate-500">
                     <tr>
                       <th scope="col" className="p-3">File</th><th scope="col" className="p-3">Type</th><th scope="col" className="p-3">Size</th><th scope="col" className="p-3">Brand</th><th scope="col" className="p-3">Uploaded</th><th scope="col" className="p-3" />
                     </tr>

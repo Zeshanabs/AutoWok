@@ -192,6 +192,18 @@ jobs:
           docker compose --env-file .env.production -f docker-compose.prod.yml config > /tmp/prod.yml
           published=$(grep -c 'published:' /tmp/prod.yml)
           test "$published" = "2" || (echo "Expected only ports 80 and 443 to be published, found $published" && exit 1)
+      - name: The backup job's image has its tools without internet access
+        # The job runs on an internal network, so it cannot install anything at run time.
+        run: |
+          image=$(docker compose --env-file .env.production -f docker-compose.prod.yml --profile ops config --format json | jq -r '.services.backup.image')
+          docker run --rm --network none --entrypoint sh "$image" -c 'for tool in openssl pg_dump pg_restore psql sha256sum tar; do command -v "$tool" >/dev/null || { echo "missing: $tool"; exit 1; }; done'
+      - name: Deployment scripts parse, and the unfilled template is rejected
+        run: |
+          for f in scripts/deploy/*.sh scripts/backup/*.sh; do sh -n "$f"; done
+          if PREFLIGHT_SKIP_DOCKER=1 sh scripts/deploy/preflight.sh .env.production.example > /tmp/preflight-template.txt; then
+            echo "The unfilled template passed the configuration check." && exit 1
+          fi
+          tail -n 1 /tmp/preflight-template.txt
       - name: Build production images
         run: |
           docker build --target runtime -t autowok-backend:ci backend
@@ -205,6 +217,28 @@ jobs:
           if docker run --rm -e APP_ENV=production autowok-backend:ci python -c "import app.main"; then
             echo "The API started in production without its required secrets." && exit 1
           fi
+      - name: Required environment variables - a complete configuration passes every check
+        # Throwaway values generated for this run only. The check covers the file,
+        # the Compose file and the application's own start-up validation in the image.
+        run: |
+          {
+            echo "APP_ENV=production"
+            echo "SITE_ADDRESS=app.example.com"
+            echo "PUBLIC_ORIGIN=https://app.example.com"
+            echo "ALLOWED_HOSTS=app.example.com"
+            echo "ACME_EMAIL=ops@example.com"
+            sh scripts/deploy/generate-secrets.sh
+          } > .env.production
+          docker tag autowok-backend:ci autowok-backend:local
+          PREFLIGHT_ALLOW_PLACEHOLDERS=1 sh scripts/deploy/preflight.sh
+          rm -f .env.production
+      - name: Deployment bundle (Compose file, proxy configuration, scripts; no secrets)
+        run: tar -czf autowok-deploy-bundle.tar.gz docker-compose.prod.yml infrastructure/proxy scripts/backup scripts/deploy .env.production.example
+      - uses: actions/upload-artifact@v4
+        with:
+          name: autowok-deploy-bundle
+          path: autowok-deploy-bundle.tar.gz
+          retention-days: 14
       - name: Scan the backend image (fails on critical vulnerabilities with a fix)
         uses: aquasecurity/trivy-action@0.28.0
         with:

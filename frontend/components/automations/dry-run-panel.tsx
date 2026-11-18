@@ -12,7 +12,7 @@ function ConditionTree({ node, depth = 0 }: { node: ConditionResult; depth?: num
     return (
       <ul className={depth ? "ml-4 border-l border-slate-200 pl-3" : ""}>
         {depth > 0 && (
-          <li className="text-xs uppercase tracking-wide text-slate-500">{node.logic === "or" ? "any of" : "all of"} · {node.passed ? "passed" : "failed"}</li>
+          <li className="text-xs text-slate-500">{node.logic === "or" ? "any of" : "all of"} · {node.passed ? "passed" : "failed"}</li>
         )}
         {node.children.length === 0 && <li className="text-sm text-slate-500">No conditions (always matches).</li>}
         {node.children.map((child) => <li key={child.path}><ConditionTree node={child} depth={depth + 1} /></li>)}

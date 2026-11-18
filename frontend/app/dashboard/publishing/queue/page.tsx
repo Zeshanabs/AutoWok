@@ -70,7 +70,7 @@ export default function PublishingQueuePage() {
       <AppShell>
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-indigo-700">Publishing</p>
+            <p className="eyebrow">Publishing</p>
             <h1 className="mt-2 text-3xl font-bold tracking-tight">Publishing queue</h1>
             <p className="mt-1 text-sm text-slate-600">Refreshes every 10 seconds.</p>
           </div>
@@ -94,7 +94,7 @@ export default function PublishingQueuePage() {
                 ["Failed", queue.counts.failed ?? 0],
               ].map(([label, value]) => (
                 <div key={label} className="rounded-2xl border border-slate-200 bg-white p-4">
-                  <dt className="text-xs uppercase text-slate-500">{label}</dt>
+                  <dt className="text-xs text-slate-500">{label}</dt>
                   <dd className="mt-1 text-2xl font-bold">{value}</dd>
                 </div>
               ))}

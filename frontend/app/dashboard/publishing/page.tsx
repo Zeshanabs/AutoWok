@@ -97,7 +97,7 @@ export default function PublishingHistoryPage() {
       <AppShell>
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-indigo-700">Publishing</p>
+            <p className="eyebrow">Publishing</p>
             <h1 className="mt-2 text-3xl font-bold tracking-tight">Publishing history</h1>
             <p className="mt-1 text-sm text-slate-600">Every publish request, its attempts, and Meta&apos;s result.</p>
           </div>

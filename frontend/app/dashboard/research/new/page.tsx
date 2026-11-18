@@ -125,7 +125,7 @@ export default function NewResearchPage() {
       <AppShell>
         <div className="mb-6 flex items-center justify-between gap-4">
           <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-indigo-700">
+            <p className="eyebrow">
               New project
             </p>
             <h1 className="mt-2 text-3xl font-bold tracking-tight">Research brief</h1>

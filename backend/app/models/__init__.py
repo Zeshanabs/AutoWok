@@ -56,7 +56,7 @@ from app.models.social_account import (
     SocialAccountCredential,
 )
 from app.models.user import User
-from app.models.workspace import Workspace, WorkspaceMembership
+from app.models.workspace import Workspace, WorkspaceInvitation, WorkspaceMembership
 
 __all__ = [
     "AgentExecution",
@@ -105,5 +105,6 @@ __all__ = [
     "TargetAudience",
     "User",
     "Workspace",
+    "WorkspaceInvitation",
     "WorkspaceMembership",
 ]

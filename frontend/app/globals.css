@@ -1,14 +1,50 @@
 @import "tailwindcss";
 
-:root {
-  --background: #f8fafc;
-  --foreground: #0f172a;
-}
+/*
+  Autowok design tokens.
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  The pages are written with Tailwind's `slate` (neutrals) and `indigo`
+  (accent) utilities. Re-pointing those two scales here restyles every page at
+  once and keeps one source of truth:
+
+  * neutrals: carbon steel, a cool grey with a slight green cast;
+  * accent:   burner blue, the colour of a gas flame under a wok;
+  * ember:    used only for the brand mark.
+*/
+@theme {
+  --color-slate-50: #f3f5f5;
+  --color-slate-100: #e8eceb;
+  --color-slate-200: #d8dedd;
+  --color-slate-300: #bac4c3;
+  --color-slate-400: #8b9898;
+  --color-slate-500: #627071;
+  --color-slate-600: #485657;
+  --color-slate-700: #344041;
+  --color-slate-800: #212c2e;
+  --color-slate-900: #141d20;
+  --color-slate-950: #0b1215;
+
+  --color-indigo-50: #edf1fe;
+  --color-indigo-100: #dbe3fd;
+  --color-indigo-200: #b9c8fb;
+  --color-indigo-300: #8ea5f7;
+  --color-indigo-400: #5f7df0;
+  --color-indigo-500: #3a5ce8;
+  --color-indigo-600: #2347e0;
+  --color-indigo-700: #1b38b8;
+  --color-indigo-800: #172e93;
+  --color-indigo-900: #142672;
+  --color-indigo-950: #0c1747;
+
+  --color-ember: #ff8a3d;
+
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.625rem;
+  --radius-2xl: 0.875rem;
+  --radius-3xl: 1.25rem;
+
+  --font-sans: var(--font-body), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-display-face), var(--font-body), ui-sans-serif, system-ui, sans-serif;
 }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -28,24 +64,150 @@
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
-  -webkit-font-smoothing: antialiased;
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    background: var(--color-slate-50);
+    color: var(--color-slate-900);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  h1,
+  h2 {
+    font-family: var(--font-display);
+    letter-spacing: -0.015em;
+    text-wrap: balance;
+  }
+
+  h1 {
+    letter-spacing: -0.025em;
+    line-height: 1.12;
+  }
+
+  p,
+  li,
+  dd {
+    text-wrap: pretty;
+  }
+
+  /* Form controls: one calm behaviour everywhere. */
+  input:not([type="checkbox"], [type="radio"], [type="file"], [type="range"]),
+  select,
+  textarea {
+    transition:
+      border-color 120ms ease,
+      box-shadow 120ms ease;
+  }
+
+  input:not([type="checkbox"], [type="radio"], [type="file"], [type="range"]):hover:not(:disabled, :focus),
+  select:hover:not(:disabled, :focus),
+  textarea:hover:not(:disabled, :focus) {
+    border-color: var(--color-slate-400);
+  }
+
+  input:not([type="checkbox"], [type="radio"], [type="file"], [type="range"]):focus,
+  select:focus,
+  textarea:focus {
+    border-color: var(--color-indigo-500);
+    box-shadow: 0 0 0 3px var(--color-indigo-100);
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--color-slate-400);
+  }
+
+  input[type="checkbox"],
+  input[type="radio"] {
+    accent-color: var(--color-indigo-600);
+    width: 1rem;
+    height: 1rem;
+  }
+
+  input:disabled,
+  select:disabled,
+  textarea:disabled {
+    background-color: var(--color-slate-100);
+    color: var(--color-slate-500);
+    cursor: not-allowed;
+  }
+
+  button,
+  a {
+    transition:
+      background-color 120ms ease,
+      border-color 120ms ease,
+      color 120ms ease;
+  }
+
+  button:not(:disabled) {
+    cursor: pointer;
+  }
+
+  button:disabled {
+    cursor: not-allowed;
+  }
+
+  /* Empty states (dashed boxes) sit on a faint surface so they read as a place to act. */
+  .border-dashed {
+    background-color: color-mix(in srgb, #ffffff 65%, transparent);
+  }
+
+  /* Tables read as data: quiet headers, aligned figures. */
+  table {
+    font-variant-numeric: tabular-nums;
+  }
+
+  th {
+    color: var(--color-slate-500);
+    font-weight: 600;
+  }
+
+  ::selection {
+    background: var(--color-indigo-200);
+  }
+
+  :focus-visible {
+    /* Burner blue on white is 7.4:1 (WCAG 2.4.7 / 1.4.11 need 3:1). */
+    outline: 2px solid var(--color-indigo-600);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
 }
 
-* {
-  box-sizing: border-box;
+@layer components {
+  /* The small line above a page title naming the area of the app. */
+  .eyebrow {
+    color: var(--color-indigo-700);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    line-height: 1.25rem;
+  }
+
+  /* Sidebar: light text on carbon steel needs its own focus colour. */
+  .app-sidebar :focus-visible {
+    outline-color: #ffffff;
+  }
+
+  .app-sidebar {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-slate-700) transparent;
+  }
 }
 
-::selection {
-  background: rgba(99, 102, 241, 0.2);
-}
-
-:focus-visible {
-  /* #4f46e5 on white is 6.3:1 (WCAG 2.4.7 / 1.4.11 need 3:1). */
-  outline: 2px solid #4f46e5;
-  outline-offset: 2px;
-  border-radius: 4px;
+/* Outside the layers on purpose: the room for the arrow must win over padding utilities. */
+/* One chevron for every dropdown instead of each browser's own. */
+select:not([multiple], [size]) {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%23485657' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 8 4 4 4-4'/%3E%3C/svg%3E");
+  background-position: right 0.6rem center;
+  background-repeat: no-repeat;
+  background-size: 1.1rem;
+  padding-inline-end: 2.25rem !important;
+  text-overflow: ellipsis;
 }

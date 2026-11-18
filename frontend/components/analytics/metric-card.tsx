@@ -76,7 +76,7 @@ export function MetricCard({ metric }: { metric: MetricSummary }) {
 export function StatTile({ label, value, delta, note, unit }: { label: string; value: number | null; delta?: number | null; note?: string | null; unit?: string }) {
   return (
     <article className="rounded-2xl border border-slate-200 bg-white p-5">
-      <p className="text-xs uppercase tracking-wide text-slate-500">{label}</p>
+      <p className="text-xs text-slate-500">{label}</p>
       <p className="mt-1 text-3xl font-semibold text-slate-900">{formatNumber(value, unit)}</p>
       {delta !== undefined && <Change change={delta ?? null} />}
       {note && <p className="mt-1 text-xs text-slate-500">{note}</p>}

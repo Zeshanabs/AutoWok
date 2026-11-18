@@ -42,6 +42,10 @@ htmlcov/
 *.sqlite3
 *.db
 
+# Release records written on a server by scripts/deploy/deploy.sh
+release.env
+release.*.env
+
 # Local backups and benchmark output
 backups/
 backend/perf/results/

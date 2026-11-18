@@ -25,7 +25,7 @@ export function AgentsHeader({
     <div>
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-indigo-700">AI agents</p>
+          <p className="eyebrow">AI agents</p>
           <h1 className="mt-2 text-3xl font-bold tracking-tight">{title}</h1>
           <p className="mt-1 max-w-3xl text-sm text-slate-600">{description}</p>
         </div>

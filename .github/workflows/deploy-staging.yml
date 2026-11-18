@@ -3,21 +3,22 @@ name: Deploy to staging
 # Manual only. Nothing is deployed on push or merge.
 #
 # A person starts this workflow for a chosen commit, and the "staging" GitHub
-# environment must be configured with required reviewers so a second person
-# approves before any step runs. All credentials are environment secrets.
+# environment must be configured with required reviewers so the run waits for
+# approval before any step executes. All credentials are environment secrets.
 #
 # Required "staging" environment secrets:
 #   STAGING_SSH_HOST, STAGING_SSH_USER, STAGING_SSH_KEY, STAGING_SSH_KNOWN_HOSTS
-#   STAGING_DEPLOY_PATH   directory on the server that holds docker-compose.prod.yml,
-#                         infrastructure/, scripts/ and .env.production
-# Required "staging" environment variables:
+#   STAGING_DEPLOY_PATH   directory on the server that holds .env.production
+# Required "staging" environment variable:
 #   STAGING_PUBLIC_ORIGIN  for example https://staging.example.com
 #
-# The server's .env.production is managed on the server (or by your secret
-# store); this workflow never writes application secrets.
+# The server's .env.production is created by a person on the server; this
+# workflow never reads or writes application secrets. It copies the deployment
+# files (Compose file, proxy configuration, scripts) and runs
+# scripts/deploy/deploy.sh, which backs up, migrates, starts and verifies.
 #
 # STATUS: this workflow has not been executed. It needs a staging server and the
-# secrets above before its first run. See docs/ci-cd.md.
+# secrets above before its first run. See docs/deployment/STAGING_DEPLOYMENT.md.
 
 on:
   workflow_dispatch:
@@ -63,12 +64,13 @@ jobs:
           image=ghcr.io/${GITHUB_REPOSITORY,,}/backend:${{ steps.meta.outputs.tag }}
           docker build --target runtime -t "$image" backend
           docker push "$image"
-      - name: Build and push the web image
+      - name: Build and push the web image (the public address is compiled in)
+        env:
+          PUBLIC_ORIGIN: ${{ vars.STAGING_PUBLIC_ORIGIN }}
         run: |
-          image=ghcr.io/${GITHUB_REPOSITORY,,}/frontend:${{ steps.meta.outputs.tag }}
-          docker build --target runtime \
-            --build-arg NEXT_PUBLIC_API_BASE_URL="${{ vars.STAGING_PUBLIC_ORIGIN }}" \
-            -t "$image" frontend
+          test -n "$PUBLIC_ORIGIN" || (echo "Set the STAGING_PUBLIC_ORIGIN environment variable." && exit 1)
+          image=ghcr.io/${GITHUB_REPOSITORY,,}/frontend:staging-${{ steps.meta.outputs.tag }}
+          docker build --target runtime --build-arg NEXT_PUBLIC_API_BASE_URL="$PUBLIC_ORIGIN" -t "$image" frontend
           docker push "$image"
 
   deploy:
@@ -78,12 +80,25 @@ jobs:
     timeout-minutes: 20
     environment: staging
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
       - name: Configure SSH
+        env:
+          SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.STAGING_SSH_KNOWN_HOSTS }}
         run: |
           install -m 700 -d ~/.ssh
-          printf '%s\n' "${{ secrets.STAGING_SSH_KEY }}" > ~/.ssh/id_deploy
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_deploy
           chmod 600 ~/.ssh/id_deploy
-          printf '%s\n' "${{ secrets.STAGING_SSH_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+      - name: Copy the deployment files (no secrets) to the server
+        env:
+          TARGET: ${{ secrets.STAGING_SSH_USER }}@${{ secrets.STAGING_SSH_HOST }}
+          DEPLOY_PATH: ${{ secrets.STAGING_DEPLOY_PATH }}
+        run: |
+          tar -czf - docker-compose.prod.yml infrastructure/proxy scripts/backup scripts/deploy .env.production.example \
+            | ssh -i ~/.ssh/id_deploy -o StrictHostKeyChecking=yes "$TARGET" "mkdir -p '$DEPLOY_PATH' && tar -xzf - -C '$DEPLOY_PATH'"
       - name: Back up, migrate, start the new version, verify
         env:
           TARGET: ${{ secrets.STAGING_SSH_USER }}@${{ secrets.STAGING_SSH_HOST }}
@@ -92,26 +107,6 @@ jobs:
           RUN_MIGRATIONS: ${{ inputs.run_migrations }}
         run: |
           repo="ghcr.io/${GITHUB_REPOSITORY,,}"
+          flag=""; [ "$RUN_MIGRATIONS" = "true" ] || flag="--skip-migrations"
           ssh -i ~/.ssh/id_deploy -o StrictHostKeyChecking=yes "$TARGET" \
-            "DEPLOY_PATH='$DEPLOY_PATH' BACKEND_IMAGE='$repo/backend:$TAG' FRONTEND_IMAGE='$repo/frontend:$TAG' RUN_MIGRATIONS='$RUN_MIGRATIONS' sh -s" <<'REMOTE'
-          set -eu
-          cd "$DEPLOY_PATH"
-          export BACKEND_IMAGE FRONTEND_IMAGE
-          compose="docker compose --env-file .env.production -f docker-compose.prod.yml"
-          $compose pull backend worker frontend
-          # A backup before every schema change (docs/backup-recovery.md).
-          $compose run --rm backup
-          if [ "$RUN_MIGRATIONS" = "true" ]; then
-            $compose run --rm migrate
-          fi
-          $compose up -d --no-build --remove-orphans
-          # Fail the deployment if the new version does not become healthy.
-          for i in $(seq 1 30); do
-            if $compose exec -T backend python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/v1/ready', timeout=4).status == 200 else 1)"; then
-              echo "Staging is ready on $BACKEND_IMAGE"; exit 0
-            fi
-            sleep 5
-          done
-          echo "The new version did not become ready. Roll back with the previous image tags (docs/deployment.md)."
-          exit 1
-          REMOTE
+            "cd '$DEPLOY_PATH' && sh scripts/deploy/deploy.sh release '$repo/backend:$TAG' '$repo/frontend:staging-$TAG' $flag"
