@@ -142,11 +142,18 @@
     transition:
       background-color 120ms ease,
       border-color 120ms ease,
-      color 120ms ease;
+      color 120ms ease,
+      box-shadow 120ms ease,
+      transform 80ms ease;
   }
 
   button:not(:disabled) {
     cursor: pointer;
+  }
+
+  /* Buttons give a little under the finger, so a click feels registered. */
+  button:not(:disabled):active {
+    transform: translateY(1px) scale(0.985);
   }
 
   button:disabled {
