@@ -234,7 +234,7 @@ jobs:
           rm -f .env.production
       - name: Deployment bundle (Compose file, proxy configuration, scripts; no secrets)
         run: tar -czf autowok-deploy-bundle.tar.gz docker-compose.prod.yml infrastructure/proxy scripts/backup scripts/deploy .env.production.example
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: autowok-deploy-bundle
           path: autowok-deploy-bundle.tar.gz
