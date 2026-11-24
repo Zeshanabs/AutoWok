@@ -70,7 +70,10 @@
   }
 
   body {
-    background: var(--color-slate-50);
+    background:
+      radial-gradient(60rem 28rem at 85% -8rem, color-mix(in srgb, var(--color-indigo-200) 45%, transparent), transparent 70%),
+      var(--color-slate-50);
+    background-attachment: fixed;
     color: var(--color-slate-900);
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
@@ -163,6 +166,36 @@
   /* Empty states (dashed boxes) sit on a faint surface so they read as a place to act. */
   .border-dashed {
     background-color: color-mix(in srgb, #ffffff 65%, transparent);
+  }
+
+  /* Cards: a soft resting shadow, and a small lift when the whole card is a link. */
+  .bg-white.border:is(.rounded-lg, .rounded-xl, .rounded-2xl, .rounded-3xl) {
+    box-shadow:
+      0 1px 2px rgb(11 18 21 / 0.04),
+      0 4px 12px -6px rgb(11 18 21 / 0.08);
+  }
+
+  a.bg-white.border:is(.rounded-lg, .rounded-xl, .rounded-2xl, .rounded-3xl):hover {
+    border-color: var(--color-indigo-300);
+    box-shadow:
+      0 2px 4px rgb(11 18 21 / 0.05),
+      0 12px 24px -10px rgb(35 71 224 / 0.22);
+    transform: translateY(-2px);
+  }
+
+  /* Table rows highlight under the pointer so a line is easy to follow. */
+  tbody tr {
+    transition: background-color 120ms ease;
+  }
+
+  tbody tr:hover {
+    background-color: color-mix(in srgb, var(--color-indigo-50) 60%, transparent);
+  }
+
+  /* Thin, quiet scrollbars everywhere. */
+  html {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-slate-300) transparent;
   }
 
   /* Tables read as data: quiet headers, aligned figures. */
